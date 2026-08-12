@@ -12,13 +12,22 @@
   const AREA_MAX_BET = 20000;
   const ROUND_MAX_BET = 50000;
   const RESHUFFLE_THRESHOLD = 60;
-  const GAME_STATES = Object.freeze({ BETTING: "BETTING", DEALING: "DEALING", ROUND_END: "ROUND_END" });
+  const GAME_STATES = Object.freeze({ BETTING: "BETTING", DEAL_READY: "DEAL_READY", DEALING: "DEALING", SETTLING: "SETTLING", ROUND_END: "ROUND_END" });
   const BET_LABELS = Object.freeze({ PLAYER: "闲 / PLAYER", BANKER: "庄 / BANKER", TIE: "和 / TIE", PLAYER_PAIR: "闲对 / PLAYER PAIR", BANKER_PAIR: "庄对 / BANKER PAIR" });
   const SUIT_SYMBOLS = Object.freeze({ spades: "♠", hearts: "♥", diamonds: "♦", clubs: "♣" });
 
   function formatMoney(value) {
     const number = betting.roundMoney(value);
     return new Intl.NumberFormat("en-US", { minimumFractionDigits: Number.isInteger(number) ? 0 : 2, maximumFractionDigits: 2 }).format(number);
+  }
+
+  /** Presentation-only queue based on an Engine-locked result; it never draws cards. */
+  function buildDealQueue(roundResult) {
+    const item = (side, cardIndex) => ({ side, cardIndex, card: roundResult[side === "PLAYER" ? "playerCards" : "bankerCards"][cardIndex], label: `${side} 第${cardIndex + 1}张${cardIndex === 2 ? "（补牌）" : ""}`, isThirdCard: cardIndex === 2 });
+    const queue = [item("PLAYER", 0), item("BANKER", 0), item("PLAYER", 1), item("BANKER", 1)];
+    if (roundResult.playerCards.length === 3) queue.push(item("PLAYER", 2));
+    if (roundResult.bankerCards.length === 3) queue.push(item("BANKER", 2));
+    return queue;
   }
 
   class BaccaratGameController {
@@ -34,6 +43,10 @@
       this.betActionHistory = [];
       this.roundResult = null;
       this.settlement = null;
+      this.dealQueue = [];
+      this.currentDealIndex = 0;
+      this.revealedCards = { PLAYER: [], BANKER: [] };
+      this.isDealInputLocked = false;
       this.message = "请选择筹码并下注";
     }
 
@@ -96,10 +109,9 @@
       return true;
     }
 
-    dealRound() {
+    prepareDeal() {
       if (this.state !== GAME_STATES.BETTING) return this.reject("当前不能发牌");
       if (this.totalBet === 0) return this.reject("请先下注");
-      this.state = GAME_STATES.DEALING;
       betting.closeBetting(this.bettingRound);
       if (this.shoe.length < RESHUFFLE_THRESHOLD) {
         this.shoe = this.createShuffledShoe();
@@ -107,10 +119,14 @@
         this.message = "重新洗牌";
       }
       try {
+        // The real Baccarat Engine locks every card and result before UI reveal begins.
         this.roundResult = baccarat.playRound(this.shoe);
-        this.settlement = betting.settleRound(this.account, this.bettingRound, this.roundResult);
-        this.state = GAME_STATES.ROUND_END;
-        this.message = `${this.roundResult.winner} — 结算完成`;
+        this.dealQueue = buildDealQueue(this.roundResult);
+        this.currentDealIndex = 0;
+        this.revealedCards = { PLAYER: [], BANKER: [] };
+        this.settlement = null;
+        this.state = GAME_STATES.DEAL_READY;
+        this.message = "READY TO DEAL · 准备发牌";
         return true;
       } catch (error) {
         this.state = GAME_STATES.ROUND_END;
@@ -119,6 +135,37 @@
       }
     }
 
+    revealNextCard() {
+      if (![GAME_STATES.DEAL_READY, GAME_STATES.DEALING].includes(this.state) || this.isDealInputLocked) return this.reject("当前不能发下一张牌");
+      const nextDeal = this.dealQueue[this.currentDealIndex];
+      if (!nextDeal) return this.reject("发牌完成");
+      this.isDealInputLocked = true;
+      this.revealedCards[nextDeal.side].push(nextDeal.card);
+      this.currentDealIndex += 1;
+      if (this.currentDealIndex >= this.dealQueue.length) {
+        this.state = GAME_STATES.SETTLING;
+        this.settlement = betting.settleRound(this.account, this.bettingRound, this.roundResult);
+        this.state = GAME_STATES.ROUND_END;
+        this.message = `${this.roundResult.winner}${this.roundResult.winner === "TIE" ? "" : " WIN"} · 发牌完成`;
+      } else {
+        const following = this.dealQueue[this.currentDealIndex];
+        this.state = GAME_STATES.DEALING;
+        this.message = following.isThirdCard ? "DRAW CARD · 补牌" : "DEALING · 发牌中";
+      }
+      this.isDealInputLocked = false;
+      return true;
+    }
+
+    handlePrimaryAction() {
+      if (this.state === GAME_STATES.BETTING) return this.prepareDeal();
+      if ([GAME_STATES.DEAL_READY, GAME_STATES.DEALING].includes(this.state)) return this.revealNextCard();
+      if (this.state === GAME_STATES.ROUND_END) return this.nextRound();
+      return this.reject("当前操作不可用");
+    }
+
+    // Compatibility alias for pre-V0.6.2 callers; it now locks the result only.
+    dealRound() { return this.prepareDeal(); }
+
     nextRound() {
       if (this.state !== GAME_STATES.ROUND_END) return this.reject("请先完成当前局");
       this.roundId += 1;
@@ -126,6 +173,10 @@
       this.betActionHistory = [];
       this.roundResult = null;
       this.settlement = null;
+      this.dealQueue = [];
+      this.currentDealIndex = 0;
+      this.revealedCards = { PLAYER: [], BANKER: [] };
+      this.isDealInputLocked = false;
       this.state = GAME_STATES.BETTING;
       this.message = "新一局开始，请下注";
       return true;
@@ -145,8 +196,8 @@
     const elements = {
       balance: byId("balance"), round: byId("round"), shoe: byId("shoe-id"), state: byId("game-state"), remaining: byId("remaining"), message: byId("message"),
       playerCards: byId("player-cards"), bankerCards: byId("banker-cards"), playerScore: byId("player-score"), bankerScore: byId("banker-score"),
-      result: byId("result"), pairResult: byId("pair-result"), totalBet: byId("total-bet"), totalReturn: byId("total-return"), netResult: byId("net-result"),
-      settlementDetails: byId("settlement-details"), undo: byId("undo"), clear: byId("clear"), deal: byId("deal"), next: byId("next-round"),
+      result: byId("result"), pairResult: byId("pair-result"), nextCard: byId("next-card-label"), playerScoreLabel: byId("player-score-label"), bankerScoreLabel: byId("banker-score-label"), totalBet: byId("total-bet"), totalReturn: byId("total-return"), netResult: byId("net-result"),
+      settlementDetails: byId("settlement-details"), undo: byId("undo"), clear: byId("clear"), deal: byId("deal"),
     };
     const roadmapToggle = byId("roadmap-toggle");
     const roadmap = document.querySelector(".roadmap");
@@ -171,24 +222,32 @@
       elements.undo.disabled = !isBetting || game.betActionHistory.length === 0;
       elements.clear.disabled = !isBetting || game.totalBet === 0;
       elements.deal.disabled = !isBetting || game.totalBet === 0;
-      elements.next.disabled = game.state !== GAME_STATES.ROUND_END;
-      if (!game.roundResult) {
-        elements.playerCards.innerHTML = "<span class=\"placeholder\">等待发牌</span>";
-        elements.bankerCards.innerHTML = "<span class=\"placeholder\">等待发牌</span>";
-        elements.playerScore.textContent = "--";
-        elements.bankerScore.textContent = "--";
+      const nextDeal = game.dealQueue[game.currentDealIndex];
+      const actionText = game.state === GAME_STATES.BETTING ? ["DEAL", "发牌"] : game.state === GAME_STATES.ROUND_END ? ["NEXT ROUND", "下一局"] : ["NEXT CARD", "下一张"];
+      elements.deal.innerHTML = `${actionText[0]}<br><small>${actionText[1]}</small>`;
+      elements.deal.disabled = (game.state === GAME_STATES.BETTING && game.totalBet === 0) || game.state === GAME_STATES.SETTLING;
+      elements.nextCard.textContent = nextDeal ? `下一张：${nextDeal.label}` : game.state === GAME_STATES.ROUND_END ? "发牌完成" : "请先下注";
+      const isFinal = game.state === GAME_STATES.ROUND_END;
+      const playerVisible = game.revealedCards.PLAYER;
+      const bankerVisible = game.revealedCards.BANKER;
+      elements.playerCards.innerHTML = playerVisible.length ? playerVisible.map(cardHtml).join("") : "<span class=\"placeholder\">等待发牌</span>";
+      elements.bankerCards.innerHTML = bankerVisible.length ? bankerVisible.map(cardHtml).join("") : "<span class=\"placeholder\">等待发牌</span>";
+      elements.playerScoreLabel.textContent = isFinal ? "FINAL SCORE" : "CURRENT SCORE";
+      elements.bankerScoreLabel.textContent = isFinal ? "FINAL SCORE" : "CURRENT SCORE";
+      elements.playerScore.textContent = playerVisible.length ? baccarat.calculateBaccaratScore(playerVisible) : "--";
+      elements.bankerScore.textContent = bankerVisible.length ? baccarat.calculateBaccaratScore(bankerVisible) : "--";
+      if (!game.roundResult || !isFinal) {
         elements.result.textContent = "--";
-        elements.pairResult.textContent = "";
+        const partialPairs = [];
+        if (playerVisible.length >= 2 && playerVisible[0].rank === playerVisible[1].rank) partialPairs.push("PLAYER PAIR");
+        if (bankerVisible.length >= 2 && bankerVisible[0].rank === bankerVisible[1].rank) partialPairs.push("BANKER PAIR");
+        elements.pairResult.textContent = partialPairs.join(" · ");
         elements.totalReturn.textContent = "--";
         elements.netResult.textContent = "--";
         elements.settlementDetails.innerHTML = "";
         return;
       }
       const result = game.roundResult;
-      elements.playerCards.innerHTML = result.playerCards.map(cardHtml).join("");
-      elements.bankerCards.innerHTML = result.bankerCards.map(cardHtml).join("");
-      elements.playerScore.textContent = result.playerFinalScore;
-      elements.bankerScore.textContent = result.bankerFinalScore;
       elements.result.textContent = `${result.winner}${result.winner === "TIE" ? "" : " WIN"}`;
       elements.pairResult.textContent = [result.playerPair && "PLAYER PAIR", result.bankerPair && "BANKER PAIR"].filter(Boolean).join(" · ") || "无对子";
       elements.totalReturn.textContent = formatMoney(game.settlement.totalReturn);
@@ -199,8 +258,7 @@
     betButtons.forEach((button) => button.addEventListener("click", () => { game.placeSelectedBet(button.dataset.betType); render(); }));
     elements.undo.addEventListener("click", () => { game.undoBet(); render(); });
     elements.clear.addEventListener("click", () => { game.clearBets(); render(); });
-    elements.deal.addEventListener("click", () => { game.dealRound(); render(); });
-    elements.next.addEventListener("click", () => { game.nextRound(); render(); });
+    elements.deal.addEventListener("click", () => { game.handlePrimaryAction(); render(); });
     if (roadmapToggle) roadmapToggle.addEventListener("click", () => {
       const expanded = roadmap.classList.toggle("expanded");
       roadmapToggle.textContent = expanded ? "收起" : "展开";
@@ -210,7 +268,7 @@
     return game;
   }
 
-  const api = { INITIAL_BALANCE, CHIP_VALUES, DEFAULT_CHIP, AREA_MIN_BET, AREA_MAX_BET, ROUND_MAX_BET, RESHUFFLE_THRESHOLD, GAME_STATES, formatMoney, BaccaratGameController, mountGame };
+  const api = { INITIAL_BALANCE, CHIP_VALUES, DEFAULT_CHIP, AREA_MIN_BET, AREA_MAX_BET, ROUND_MAX_BET, RESHUFFLE_THRESHOLD, GAME_STATES, formatMoney, buildDealQueue, BaccaratGameController, mountGame };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.BaccaratApp = api;
   if (typeof window !== "undefined" && window.document) window.addEventListener("DOMContentLoaded", () => mountGame(window.document));
