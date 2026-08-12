@@ -1,0 +1,13 @@
+{
+  "name": "baccarat88-math-engine",
+  "version": "0.6.1",
+  "private": true,
+  "scripts": {
+    "test": "node baccarat-test.js && node betting-test.js && node simulator-test.js && node app-test.js",
+    "test:baccarat": "node baccarat-test.js",
+    "test:betting": "node betting-test.js",
+    "test:simulator": "node simulator-test.js",
+    "test:app": "node app-test.js",
+    "simulate": "node baccarat-simulator.js"
+  }
+}

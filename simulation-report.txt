@@ -1,0 +1,53 @@
+=====================================
+ Baccarat88 V0.4 Simulation Report
+=====================================
+
+Status: PASS
+Rounds: 1,000,000
+Decks Per Shoe: 8
+Reshuffle Threshold: 60
+Shoes Used: 13757
+Runtime: 1.311 seconds
+
+MAIN RESULTS
+PLAYER: 447,111 (44.7111%)
+BANKER: 457,828 (45.7828%)
+TIE: 95,061 (9.5061%)
+
+PAIR
+PLAYER_PAIR: 74,717 (7.4717%)
+BANKER_PAIR: 75,075 (7.5075%)
+BOTH_PAIR: 5,751 (0.5751%)
+
+NATURAL
+Any Natural: 343,112 (34.3112%)
+
+CARDS USED
+4 Cards: 378,898 (37.8898%)
+5 Cards: 302,743 (30.2743%)
+6 Cards: 318,359 (31.8359%)
+Average Cards Per Round: 4.9395
+
+RTP / HOUSE EDGE
+PLAYER: Stake 1,000,000, Return 989283.00, RTP 98.9283%, House Edge 1.0717%
+BANKER: Stake 1,000,000, Return 987825.60, RTP 98.7826%, House Edge 1.2174%
+TIE: Stake 1,000,000, Return 855549.00, RTP 85.5549%, House Edge 14.4451%
+PLAYER_PAIR: Stake 1,000,000, Return 896604.00, RTP 89.6604%, House Edge 10.3396%
+BANKER_PAIR: Stake 1,000,000, Return 900900.00, RTP 90.0900%, House Edge 9.9100%
+
+VALIDATION
+totalRoundCountCorrect: true
+resultProbabilitySumCorrect: true
+cardUsageCountCorrect: true
+pairCountsCorrect: true
+rtpStakeCorrect: true
+invalidWinner: 0
+invalidCardsUsed: 0
+nan: 0
+infinity: 0
+negativeReturn: 0
+settlementError: 0
+reshuffleError: 0
+uncaughtError: 0
+referenceWarnings: none
+=====================================

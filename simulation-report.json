@@ -1,0 +1,128 @@
+{
+  "version": "0.4.0",
+  "status": "PASS",
+  "config": {
+    "rounds": 1000000,
+    "deckCount": 8,
+    "cardsPerShoe": 416,
+    "reshuffleThreshold": 60
+  },
+  "shoes": {
+    "shoeCount": 13757,
+    "reshuffleCount": 13756
+  },
+  "mainResults": {
+    "counts": {
+      "PLAYER": 447111,
+      "BANKER": 457828,
+      "TIE": 95061
+    },
+    "probabilities": {
+      "PLAYER": 0.447111,
+      "BANKER": 0.457828,
+      "TIE": 0.095061
+    }
+  },
+  "pairs": {
+    "counts": {
+      "PLAYER_PAIR": 74717,
+      "BANKER_PAIR": 75075,
+      "BOTH_PAIR": 5751
+    },
+    "probabilities": {
+      "PLAYER_PAIR": 0.074717,
+      "BANKER_PAIR": 0.075075,
+      "BOTH_PAIR": 0.005751
+    }
+  },
+  "naturals": {
+    "counts": {
+      "ANY": 343112,
+      "PLAYER": 189930,
+      "BANKER": 189324,
+      "BOTH": 36142
+    },
+    "rate": 0.343112
+  },
+  "cardUsage": {
+    "counts": {
+      "4": 378898,
+      "5": 302743,
+      "6": 318359
+    },
+    "proportions": {
+      "4": 0.378898,
+      "5": 0.302743,
+      "6": 0.318359
+    },
+    "totalCardsUsed": 4939461,
+    "averageCardsPerRound": 4.939461
+  },
+  "rtp": {
+    "PLAYER": {
+      "totalStake": 1000000,
+      "totalReturn": 989283,
+      "rtp": 0.989283,
+      "houseEdge": 0.010716999999999977,
+      "playerNet": -10717
+    },
+    "BANKER": {
+      "totalStake": 1000000,
+      "totalReturn": 987825.6,
+      "rtp": 0.9878256,
+      "houseEdge": 0.01217440000000003,
+      "playerNet": -12174.4
+    },
+    "TIE": {
+      "totalStake": 1000000,
+      "totalReturn": 855549,
+      "rtp": 0.855549,
+      "houseEdge": 0.144451,
+      "playerNet": -144451
+    },
+    "PLAYER_PAIR": {
+      "totalStake": 1000000,
+      "totalReturn": 896604,
+      "rtp": 0.896604,
+      "houseEdge": 0.10339600000000004,
+      "playerNet": -103396
+    },
+    "BANKER_PAIR": {
+      "totalStake": 1000000,
+      "totalReturn": 900900,
+      "rtp": 0.9009,
+      "houseEdge": 0.09909999999999997,
+      "playerNet": -99100
+    }
+  },
+  "errors": {
+    "invalidWinner": 0,
+    "invalidCardsUsed": 0,
+    "nan": 0,
+    "infinity": 0,
+    "negativeReturn": 0,
+    "settlementError": 0,
+    "reshuffleError": 0,
+    "uncaughtError": 0
+  },
+  "validation": {
+    "totalRoundCountCorrect": true,
+    "resultProbabilitySumCorrect": true,
+    "cardUsageCountCorrect": true,
+    "pairCountsCorrect": true,
+    "rtpStakeCorrect": true,
+    "invalidWinner": 0,
+    "invalidCardsUsed": 0,
+    "nan": 0,
+    "infinity": 0,
+    "negativeReturn": 0,
+    "settlementError": 0,
+    "reshuffleError": 0,
+    "uncaughtError": 0,
+    "referenceWarnings": []
+  },
+  "runtime": {
+    "milliseconds": 1311,
+    "seconds": 1.311
+  }
+}

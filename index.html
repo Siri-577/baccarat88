@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Baccarat 88 — Basic Playable Version</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="casino-shell">
+    <header class="casino-header"><div class="brand"><span>BACCARAT</span><strong>88</strong><small>VIP ELECTRONIC TABLE</small></div><div class="header-metrics"><div><small>BALANCE</small><strong id="balance">100,000</strong></div><div><small>SHOE</small><strong id="shoe-id">1</strong></div><div><small>HAND</small><strong id="round">1</strong></div></div></header>
+    <section class="status-strip"><span class="status-label">GAME STATUS</span><strong id="message" aria-live="polite">PLACE YOUR BETS</strong><span class="debug">State <i id="game-state"></i> · Cards <i id="remaining"></i></span></section>
+    <section class="casino-table">
+      <div class="table-utility discard-tray"><span>DISCARD</span><small>弃牌盒</small><div class="tray-slots"></div></div>
+      <div class="table-utility shoe-visual"><span>SHOE</span><small>牌靴</small><div class="shoe-stack"></div></div>
+      <section class="hands-stage">
+        <article class="hand player-hand"><div class="hand-title"><span>PLAYER</span><small>闲</small></div><div id="player-cards" class="cards card-slots"><span class="placeholder">等待发牌</span></div><p>FINAL SCORE <strong id="player-score">--</strong></p></article>
+        <article class="hand banker-hand"><div class="hand-title"><span>BANKER</span><small>庄</small></div><div id="banker-cards" class="cards card-slots"><span class="placeholder">等待发牌</span></div><p>FINAL SCORE <strong id="banker-score">--</strong></p></article>
+      </section>
+      <section class="outcome"><strong id="result">--</strong><span id="pair-result"></span></section>
+      <section class="bet-grid" aria-label="下注区">
+        <button class="bet-area player-bet" data-bet-type="PLAYER"><b>PLAYER</b><span>闲</span><em>1 : 1</em><i>BET <strong class="bet-amount">0</strong></i></button>
+        <button class="bet-area tie-bet" data-bet-type="TIE"><b>TIE</b><span>和</span><em>8 : 1</em><i>BET <strong class="bet-amount">0</strong></i></button>
+        <button class="bet-area banker-bet" data-bet-type="BANKER"><b>BANKER</b><span>庄</span><em>0.95 : 1</em><i>BET <strong class="bet-amount">0</strong></i></button>
+        <button class="bet-area pair-bet" data-bet-type="PLAYER_PAIR"><b>PLAYER PAIR</b><span>闲对</span><em>11 : 1</em><i>BET <strong class="bet-amount">0</strong></i></button>
+        <button class="bet-area pair-bet" data-bet-type="BANKER_PAIR"><b>BANKER PAIR</b><span>庄对</span><em>11 : 1</em><i>BET <strong class="bet-amount">0</strong></i></button>
+      </section>
+      <section class="roadmap" aria-label="路纸预留"><div class="roadmap-heading"><div><b>ROADMAP</b><span>路纸预留</span></div><button id="roadmap-toggle" type="button" aria-expanded="false">展开</button></div><div class="roadmap-content"><div><small>珠盘路</small><p>○ ○ ○ ○ ○ ○ ○ ○</p></div><div><small>大路</small><p>○ ○ ○ ○ ○ ○ ○ ○</p></div></div></section>
+    </section>
+    <section class="control-console"><div class="total-bet"><small>TOTAL BET</small><strong id="total-bet">0</strong></div><div class="chips" aria-label="筹码"><button data-chip="10">10</button><button data-chip="50">50</button><button data-chip="100">100</button><button data-chip="500">500</button><button data-chip="1000">1K</button><button data-chip="5000">5K</button></div><div class="actions"><button id="undo">UNDO<br><small>撤销</small></button><button id="clear">CLEAR<br><small>清除</small></button><button id="deal" class="primary-action">DEAL<br><small>发牌</small></button><button id="next-round">NEXT ROUND<br><small>下一局</small></button></div></section>
+    <section class="settlement"><div><small>TOTAL RETURN</small><strong id="total-return">--</strong></div><div><small>NET RESULT</small><strong id="net-result">--</strong></div><ul id="settlement-details"></ul></section>
+  </main>
+  <script src="baccarat-engine.js"></script><script src="betting-engine.js"></script><script src="app.js"></script>
+</body>
+</html>
