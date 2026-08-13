@@ -117,6 +117,15 @@
     }
   }
 
+  function getShoeEquipmentState(game) {
+    const cut = game.cutCard;
+    if (cut.shoeEnding) return "complete";
+    if (cut.lastHandActive || (cut.lastHandPending && game.state === GAME_STATES.BETTING)) return "last-hand";
+    if (cut.lastHandPending) return "last-hand-next";
+    if (cut.reached) return "cut";
+    return "in-play";
+  }
+
   class BaccaratGameController {
     constructor({ initialBalance = INITIAL_BALANCE, random = Math.random, autoRevealInterval = AUTO_REVEAL_INTERVAL_MS, autoRevealStartDelay = AUTO_REVEAL_START_DELAY_MS, debugForcedCutThreshold } = {}) {
       this.random = random;
@@ -572,10 +581,31 @@
       balance: byId("balance"), round: byId("round"), shoe: byId("shoe-id"), state: byId("game-state"), remaining: byId("remaining"), message: byId("message"),
       playerCards: byId("player-cards"), bankerCards: byId("banker-cards"), playerScore: byId("player-score"), bankerScore: byId("banker-score"),
       result: byId("result"), pairResult: byId("pair-result"), nextCard: byId("next-card-label"), playerScoreLabel: byId("player-score-label"), bankerScoreLabel: byId("banker-score-label"), totalBet: byId("total-bet"), totalReturn: byId("total-return"), netResult: byId("net-result"),
-      settlementDetails: byId("settlement-details"), undo: byId("undo"), clear: byId("clear"), deal: byId("deal"), repeat: byId("repeat-bet"), burnCard: byId("burn-card"), burnRank: byId("burn-card-rank"), burnValue: byId("burn-card-value"), shoeStatus: byId("shoe-status"), cutCardEvent: byId("cut-card-event"),
+      settlementDetails: byId("settlement-details"), undo: byId("undo"), clear: byId("clear"), deal: byId("deal"), repeat: byId("repeat-bet"), burnCard: byId("burn-card"), burnRank: byId("burn-card-rank"), burnValue: byId("burn-card-value"), shoeStatus: byId("shoe-status"), cutCardEvent: byId("cut-card-event"), shoeVisual: document.querySelector(".shoe-visual"), visualCutCard: byId("visual-cut-card"),
       beadPlate: byId("bead-plate"), bigRoad: byId("big-road"), bigEyeBoy: byId("big-eye-boy"), smallRoad: byId("small-road"), cockroachPig: byId("cockroach-pig"), roadmapStats: byId("roadmap-stats"),
     };
     const roadmapToggle = byId("roadmap-toggle");
+    let cutVisualRunId = 0;
+    function resetCutCardPresentation() {
+      cutVisualRunId += 1;
+      if (!elements.visualCutCard) return;
+      elements.visualCutCard.hidden = true;
+      elements.visualCutCard.classList.remove("is-presenting");
+    }
+    function playCutCardPresentation() {
+      const card = elements.visualCutCard;
+      if (!card || !card.hidden) return;
+      const runId = ++cutVisualRunId;
+      card.hidden = false;
+      card.classList.remove("is-presenting");
+      void card.offsetWidth;
+      card.classList.add("is-presenting");
+      setTimeout(() => { if (runId === cutVisualRunId) { card.classList.remove("is-presenting"); card.hidden = true; } }, 1600);
+    }
+    function renderShoeEquipmentState() {
+      if (elements.shoeVisual) elements.shoeVisual.dataset.state = getShoeEquipmentState(game);
+      if (!game.cutCard.reached) resetCutCardPresentation();
+    }
     const roadmap = document.querySelector(".roadmap");
     const betButtons = [...document.querySelectorAll("[data-bet-type]")];
     const chipButtons = [...document.querySelectorAll("[data-chip]")];
@@ -641,6 +671,7 @@
       elements.message.textContent = game.message;
       renderBurnPresentation(elements, game);
       renderShoeStatus(elements, game);
+      renderShoeEquipmentState();
       elements.totalBet.textContent = formatMoney(game.totalBet);
       renderRoadmaps();
       for (const button of betButtons) {
@@ -695,6 +726,7 @@
       event.hidden = false;
       if (root.__BACCARAT_DEBUG_CUT__ === true) console.log("[Cut UI] event = CUT_CARD_REACHED");
       setTimeout(() => { if (runId === game.cutEventRunId) event.hidden = true; }, CUT_CARD_EVENT_MS);
+      playCutCardPresentation();
     };
     chipButtons.forEach((button) => button.addEventListener("click", () => { game.selectChip(Number(button.dataset.chip)); render(); }));
     if (elements.repeat) elements.repeat.addEventListener("click", () => { game.repeatLastBet(); render(); });
@@ -783,7 +815,7 @@
     const symbol = SUIT_SYMBOLS[card.suit]; const color = card.suit === "hearts" || card.suit === "diamonds" ? "red" : "black"; const third = index === 2 ? " third-card is-third-card" : "";
     return `<span class="card-shell${third}" data-card-key="${key}" data-card-position="${index + 1}" data-reveal-state="${revealed ? "FACE_UP" : "FACE_DOWN"}"><span class="card-inner${revealed ? " is-face-up" : " is-face-down"}"><span class="card-face card-back"></span><span class="card-face card-front ${color}"><strong>${card.rank}</strong><small>${symbol}</small></span></span></span>`;
   }
-  const api = { INITIAL_BALANCE, CHIP_VALUES, DEFAULT_CHIP, AREA_MIN_BET, AREA_MAX_BET, ROUND_MAX_BET, MIN_CUT_REMAINING, MAX_CUT_REMAINING, GAME_STATES, SHOE_STATUS, CUT_CARD_EVENT_MS, formatMoney, getBurnValue, createBurnState, createCutCardState, randomInteger, getShoePresentationState, renderBurnPresentation, renderShoeStatus, buildDealQueue, getDealDuration, getDiscardSequence, BaccaratGameController, mountGame };
+  const api = { INITIAL_BALANCE, CHIP_VALUES, DEFAULT_CHIP, AREA_MIN_BET, AREA_MAX_BET, ROUND_MAX_BET, MIN_CUT_REMAINING, MAX_CUT_REMAINING, GAME_STATES, SHOE_STATUS, CUT_CARD_EVENT_MS, formatMoney, getBurnValue, createBurnState, createCutCardState, randomInteger, getShoePresentationState, getShoeEquipmentState, renderBurnPresentation, renderShoeStatus, buildDealQueue, getDealDuration, getDiscardSequence, BaccaratGameController, mountGame };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.BaccaratApp = api;
   if (typeof window !== "undefined" && window.document) window.addEventListener("DOMContentLoaded", () => mountGame(window.document));

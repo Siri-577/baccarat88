@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>百家乐 88 — V0.6.4</title>
+  <title>百家乐 88 — V0.7.5</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -14,7 +14,7 @@
       <section id="burn-card" class="burn-card" hidden aria-live="polite"><small>BURN CARD</small><strong id="burn-card-rank">--</strong><span id="burn-card-value">BURN VALUE --</span></section>
       <section id="cut-card-event" class="cut-card-event" hidden aria-live="polite"><strong>CUT CARD REACHED</strong><span>切牌卡已到达</span></section>
       <section id="shoe-status" class="shoe-status" aria-live="polite"></section>
-      <div class="table-utility discard-tray"><span>DISCARD</span><small>弃牌盒</small><div class="tray-slots"></div></div><div class="table-utility shoe-visual"><span>SHOE</span><small>牌靴</small><div class="shoe-stack"></div></div>
+      <div class="table-utility discard-tray"><span>DISCARD</span><small>弃牌盒</small><div class="tray-slots"></div></div><div class="table-utility shoe-visual" data-state="in-play"><span>SHOE</span><small>牌靴</small><div class="shoe-stack"></div><div id="visual-cut-card" class="visual-cut-card" hidden aria-hidden="true"><span>CUT</span><small>CARD</small></div></div>
       <section class="hands-stage"><article class="hand player-hand"><div class="hand-title"><span>PLAYER</span><small>闲</small></div><div id="player-cards" class="cards card-slots"></div><p><span id="player-score-label">CURRENT SCORE</span> <strong id="player-score">--</strong></p></article><article class="hand banker-hand"><div class="hand-title"><span>BANKER</span><small>庄</small></div><div id="banker-cards" class="cards card-slots"></div><p><span id="banker-score-label">CURRENT SCORE</span> <strong id="banker-score">--</strong></p></article></section>
       <section class="deal-prompt"><small>NEXT REVEAL</small><strong id="next-card-label">请先下注</strong></section><section class="outcome"><strong id="result">--</strong><span id="pair-result"></span></section>
       <section class="bet-grid" aria-label="下注区"><button class="bet-area player-bet" data-bet-type="PLAYER"><b>PLAYER</b><span>闲</span><em>1 : 1</em><i>BET <strong class="bet-amount">0</strong></i></button><button class="bet-area tie-bet" data-bet-type="TIE"><b>TIE</b><span>和</span><em>8 : 1</em><i>BET <strong class="bet-amount">0</strong></i></button><button class="bet-area banker-bet" data-bet-type="BANKER"><b>BANKER</b><span>庄</span><em>0.95 : 1</em><i>BET <strong class="bet-amount">0</strong></i></button><button class="bet-area pair-bet" data-bet-type="PLAYER_PAIR"><b>PLAYER PAIR</b><span>闲对</span><em>11 : 1</em><i>BET <strong class="bet-amount">0</strong></i></button><button class="bet-area pair-bet" data-bet-type="BANKER_PAIR"><b>BANKER PAIR</b><span>庄对</span><em>11 : 1</em><i>BET <strong class="bet-amount">0</strong></i></button></section>

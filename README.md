@@ -1,6 +1,6 @@
-# 百家乐88 — V0.7.4 Mobile Table Layout Polish
+# 百家乐88 — V0.7.5 Shoe / Cut Card Visual Polish & Table Integration
 
-纯 JavaScript 的百家乐规则、下注、RTP 模拟与可玩桌面。V0.7.4 为手机端建立独立 Equipment Zone，使 Discard / Shoe 与 PLAYER 发牌区保持稳定安全距离。
+纯 JavaScript 的百家乐规则、下注、RTP 模拟与可玩桌面。V0.7.5 将 Shoe、Discard、Shoe Status 和纯视觉 Cut Card 统一为 Dealer Equipment System。
 
 ## 运行
 
@@ -34,3 +34,4 @@ npm run simulate
 - `cut-card-test.js`：Cut Threshold、单次触发、当前局完成、Last Hand、Shoe Complete、New Shoe 和手动/自动发牌回归测试。
 - `shoe-status-test.js`：Shoe Status 派生、DOM 单一来源、隐藏规则、Cut Event token 及 Last Hand / Shoe Complete 展示测试。
 - `mobile-table-layout-test.js`：移动端设备区尺寸、Player 安全距离、Card Slot 居中、第三张倾斜与横向溢出约束测试。
+- `shoe-visual-test.js`：纯视觉 Cut Card、设备状态、事件驱动动画、New Shoe reset、Mobile 安全区与 Burn 回归测试。
