@@ -12,10 +12,13 @@
   const AREA_MAX_BET = 20000;
   const ROUND_MAX_BET = 50000;
   const RESHUFFLE_THRESHOLD = 60;
-  const GAME_STATES = Object.freeze({ BETTING: "BETTING", ROUND_LOCKED: "ROUND_LOCKED", AUTO_DEALING: "AUTO_DEALING", REVEAL_READY: "REVEAL_READY", REVEALING: "REVEALING", AUTO_DRAWING: "AUTO_DRAWING", SETTLING: "SETTLING", ROUND_END: "ROUND_END", DISCARDING: "DISCARDING" });
+  const GAME_STATES = Object.freeze({ BETTING: "BETTING", ROUND_LOCKED: "ROUND_LOCKED", AUTO_DEALING: "AUTO_DEALING", REVEAL_READY: "REVEAL_READY", REVEALING: "REVEALING", AUTO_REVEALING: "AUTO_REVEALING", AUTO_DRAWING: "AUTO_DRAWING", SETTLING: "SETTLING", ROUND_END: "ROUND_END", DISCARDING: "DISCARDING" });
   const BET_LABELS = Object.freeze({ PLAYER: "闲 / PLAYER", BANKER: "庄 / BANKER", TIE: "和 / TIE", PLAYER_PAIR: "闲对 / PLAYER PAIR", BANKER_PAIR: "庄对 / BANKER PAIR" });
   const SUIT_SYMBOLS = Object.freeze({ spades: "♠", hearts: "♥", diamonds: "♦", clubs: "♣" });
   const DEBUG_DEAL_ANIMATION = false;
+  const REVEAL_MODES = Object.freeze({ MANUAL: "MANUAL", AUTO: "AUTO" });
+  const AUTO_REVEAL_INTERVAL_MS = 1000;
+  const AUTO_REVEAL_START_DELAY_MS = 500;
   const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
   function formatMoney(value) {
@@ -45,7 +48,7 @@
   }
 
   class BaccaratGameController {
-    constructor({ initialBalance = INITIAL_BALANCE, random = Math.random } = {}) {
+    constructor({ initialBalance = INITIAL_BALANCE, random = Math.random, autoRevealInterval = AUTO_REVEAL_INTERVAL_MS, autoRevealStartDelay = AUTO_REVEAL_START_DELAY_MS } = {}) {
       this.random = random;
       this.account = betting.createPlayerAccount(initialBalance);
       this.roundId = 1;
@@ -70,6 +73,12 @@
       this.revealedCards = { PLAYER: [], BANKER: [] };
       this.isDealInputLocked = false;
       this.message = "请选择筹码并下注";
+      this.revealMode = REVEAL_MODES.MANUAL;
+      this.currentRoundRevealMode = null;
+      this.autoRevealRunId = 0;
+      this.autoRevealRunning = false;
+      this.autoRevealInterval = autoRevealInterval;
+      this.autoRevealStartDelay = autoRevealStartDelay;
     }
 
     createShuffledShoe() {
@@ -84,6 +93,14 @@
       if (this.state !== GAME_STATES.BETTING || !CHIP_VALUES.includes(amount)) return this.reject("当前不能选择筹码");
       this.selectedChip = amount;
       this.message = `已选择筹码 ${formatMoney(amount)}`;
+      return true;
+    }
+
+    setRevealMode(mode) {
+      if (![GAME_STATES.BETTING, GAME_STATES.ROUND_END].includes(this.state)) return this.reject("Reveal mode is locked for this round");
+      if (!Object.values(REVEAL_MODES).includes(mode)) return this.reject("Invalid reveal mode");
+      this.revealMode = mode;
+      this.message = `REVEAL MODE · ${mode}`;
       return true;
     }
 
@@ -131,10 +148,11 @@
       return true;
     }
 
-    async prepareDeal(dealFaceDown) {
+    async prepareDeal(dealFaceDown, flipCard) {
       if (this.state !== GAME_STATES.BETTING) return this.reject("当前不能发牌");
       if (this.totalBet === 0) return this.reject("请先下注");
       betting.closeBetting(this.bettingRound);
+      this.currentRoundRevealMode = this.revealMode;
       if (this.shoe.length < RESHUFFLE_THRESHOLD) {
         this.shoe = this.createShuffledShoe();
         this.shoeId += 1;
@@ -154,8 +172,14 @@
         this.state = GAME_STATES.ROUND_LOCKED;
         this.dealFaceDown = dealFaceDown;
         await this.autoDealCards(this.dealQueue.slice(0, 4), this.dealFaceDown, GAME_STATES.AUTO_DEALING);
-        this.state = GAME_STATES.REVEAL_READY;
-        this.message = "READY TO REVEAL · 等待翻牌";
+        if (this.currentRoundRevealMode === REVEAL_MODES.AUTO) {
+          this.state = GAME_STATES.AUTO_REVEALING;
+          this.message = "AUTO REVEAL · 自动翻牌";
+          this.startAutoRevealLoop(flipCard);
+        } else {
+          this.state = GAME_STATES.REVEAL_READY;
+          this.message = "READY TO REVEAL · 等待翻牌";
+        }
         return true;
       } catch (error) {
         this.state = GAME_STATES.ROUND_END;
@@ -183,11 +207,11 @@
       } finally { this.autoDealRunning = false; }
     }
 
-    async revealNextCard(flipCard) {
-      if (this.state !== GAME_STATES.REVEAL_READY || this.isRevealInputLocked) return this.reject("当前不能翻牌");
+    async revealNextCard(flipCard, auto = false) {
+      if ((auto ? this.state !== GAME_STATES.AUTO_REVEALING : this.state !== GAME_STATES.REVEAL_READY) || this.isRevealInputLocked) return this.reject("当前不能翻牌");
       const nextDeal = this.revealQueue[this.currentRevealIndex];
       if (!nextDeal) return this.reject("没有待翻牌");
-      this.isRevealInputLocked = true; this.isDealInputLocked = true; this.state = GAME_STATES.REVEALING;
+      this.isRevealInputLocked = true; this.isDealInputLocked = true; this.state = auto ? GAME_STATES.AUTO_REVEALING : GAME_STATES.REVEALING;
       let hasRevealed = false;
       const reveal = () => {
         if (!hasRevealed) {
@@ -206,8 +230,8 @@
         this.currentRevealIndex += 1;
         if (this.currentRevealIndex === 4 && this.dealQueue.length > 4) {
           await this.autoDealCards(this.dealQueue.slice(4), this.dealFaceDown, GAME_STATES.AUTO_DRAWING);
-          this.state = GAME_STATES.REVEAL_READY;
-          this.message = "READY TO REVEAL · 等待翻牌";
+          this.state = auto ? GAME_STATES.AUTO_REVEALING : GAME_STATES.REVEAL_READY;
+          this.message = auto ? "AUTO REVEAL · 自动翻牌" : "READY TO REVEAL · 等待翻牌";
         } else if (this.currentRevealIndex >= this.revealQueue.length && this.revealQueue.length === this.dealQueue.length) {
           this.state = GAME_STATES.SETTLING;
           await wait(160);
@@ -215,16 +239,37 @@
           this.state = GAME_STATES.ROUND_END;
           this.message = `${this.roundResult.winner}${this.roundResult.winner === "TIE" ? "" : " WIN"} · 发牌完成`;
         } else {
-          this.state = GAME_STATES.REVEAL_READY;
-          this.message = "READY TO REVEAL · 等待翻牌";
+          this.state = auto ? GAME_STATES.AUTO_REVEALING : GAME_STATES.REVEAL_READY;
+          this.message = auto ? "AUTO REVEAL · 自动翻牌" : "READY TO REVEAL · 等待翻牌";
         }
         this.isRevealInputLocked = false; this.isDealInputLocked = false;
       }
       return true;
     }
 
+    startAutoRevealLoop(flipCard) {
+      if (this.autoRevealRunning || this.currentRoundRevealMode !== REVEAL_MODES.AUTO) return;
+      const runId = ++this.autoRevealRunId;
+      this.autoRevealRunning = true;
+      (async () => {
+        try {
+          await wait(this.autoRevealStartDelay);
+          while (runId === this.autoRevealRunId && this.state === GAME_STATES.AUTO_REVEALING) {
+            const next = this.revealQueue[this.currentRevealIndex];
+            if (!next) break;
+            this.message = `AUTO REVEAL · ${next.label}`;
+            await this.revealNextCard(flipCard, true);
+            this.onStateChange?.();
+            if (runId !== this.autoRevealRunId || [GAME_STATES.SETTLING, GAME_STATES.ROUND_END].includes(this.state)) break;
+            if (this.revealQueue[this.currentRevealIndex]) await wait(this.autoRevealInterval);
+          }
+        } catch (error) { if (DEBUG_DEAL_ANIMATION) console.error("[AUTO REVEAL ERROR]", error); }
+        finally { if (runId === this.autoRevealRunId) this.autoRevealRunning = false; }
+      })();
+    }
+
     handlePrimaryAction(dealFaceDown, flipCard, discardCards) {
-      if (this.state === GAME_STATES.BETTING) return this.prepareDeal(dealFaceDown);
+      if (this.state === GAME_STATES.BETTING) return this.prepareDeal(dealFaceDown, flipCard);
       if (this.state === GAME_STATES.REVEAL_READY) return this.revealNextCard(flipCard);
       if (this.state === GAME_STATES.ROUND_END) return this.nextRound(discardCards);
       return this.reject("当前操作不可用");
@@ -236,6 +281,8 @@
     async nextRound(discardCards) {
       if (this.state !== GAME_STATES.ROUND_END) return this.reject("请先完成当前局");
       this.state = GAME_STATES.DISCARDING;
+      this.autoRevealRunId += 1;
+      this.autoRevealRunning = false;
       this.message = "COLLECTING CARDS · 收牌中";
       try { if (discardCards) await discardCards(getDiscardSequence(this.dealQueue, this.dealtKeys)); }
       catch (error) { if (DEBUG_DEAL_ANIMATION) console.error("[DISCARD ANIMATION ERROR]", error); }
@@ -245,7 +292,7 @@
       this.roundResult = null;
       this.settlement = null;
       this.dealQueue = [];
-      this.roundDealPlan = this.dealQueue; this.revealQueue = []; this.currentRevealIndex = 0; this.dealtKeys.clear(); this.revealedKeys.clear(); this.autoDealRunning = false; this.isRevealInputLocked = false; this.dealFaceDown = null;
+      this.roundDealPlan = this.dealQueue; this.revealQueue = []; this.currentRevealIndex = 0; this.dealtKeys.clear(); this.revealedKeys.clear(); this.autoDealRunning = false; this.isRevealInputLocked = false; this.dealFaceDown = null; this.currentRoundRevealMode = null;
       this.currentDealIndex = 0;
       this.revealedCards = { PLAYER: [], BANKER: [] };
       this.isDealInputLocked = false;
@@ -285,6 +332,7 @@
     const roadmap = document.querySelector(".roadmap");
     const betButtons = [...document.querySelectorAll("[data-bet-type]")];
     const chipButtons = [...document.querySelectorAll("[data-chip]")];
+    const revealModeButtons = [...document.querySelectorAll("[data-reveal-mode]")];
     function initializeCardSlots(container, side) {
       container.innerHTML = [0, 1, 2].map((index) => `<span class="card-slot" data-side="${side}" data-slot-index="${index}"></span>`).join("");
     }
@@ -314,6 +362,8 @@
         button.querySelector(".bet-amount").textContent = formatMoney(game.bettingRound.bets[type]);
       }
       for (const button of chipButtons) button.classList.toggle("selected", Number(button.dataset.chip) === game.selectedChip);
+      const modeUnlocked = [GAME_STATES.BETTING, GAME_STATES.ROUND_END].includes(game.state);
+      for (const button of revealModeButtons) { const selected = button.dataset.revealMode === game.revealMode; button.disabled = !modeUnlocked; button.classList.toggle("selected", selected); button.setAttribute("aria-pressed", String(selected)); }
       elements.undo.disabled = !isBetting || game.betActionHistory.length === 0;
       elements.clear.disabled = !isBetting || game.totalBet === 0;
       elements.deal.disabled = !isBetting || game.totalBet === 0;
@@ -348,7 +398,9 @@
       elements.netResult.textContent = `${game.settlement.netResult >= 0 ? "+" : ""}${formatMoney(game.settlement.netResult)}`;
       elements.settlementDetails.innerHTML = Object.values(game.settlement.settlements).map((item) => `<li>${BET_LABELS[item.betType]}: ${item.outcome} / Return ${formatMoney(item.returnAmount)}</li>`).join("");
     }
+    game.onStateChange = render;
     chipButtons.forEach((button) => button.addEventListener("click", () => { game.selectChip(Number(button.dataset.chip)); render(); }));
+    revealModeButtons.forEach((button) => button.addEventListener("click", () => { game.setRevealMode(button.dataset.revealMode); render(); }));
     betButtons.forEach((button) => button.addEventListener("click", () => { game.placeSelectedBet(button.dataset.betType); render(); }));
     elements.undo.addEventListener("click", () => { game.undoBet(); render(); });
     elements.clear.addEventListener("click", () => { game.clearBets(); render(); });
