@@ -1,6 +1,6 @@
-# 百家乐88 — V0.6.5.1 Repeat Bet & Derived Roads Layout Refinement
+# 百家乐88 — V0.7.2 Cut Card System
 
-纯 JavaScript 的百家乐规则、下注、RTP 模拟与可玩桌面。V0.6.5.1 新增完整分区的 REPEAT 下注恢复，并将三条派生路调整为桌面三栏、移动端内部横向滚动。
+纯 JavaScript 的百家乐规则、下注、RTP 模拟与可玩桌面。V0.7.2 在真实 Burn Card 生命周期之上增加 Cut Card 阈值、Last Hand 和由玩家确认的 New Shoe 流程。
 
 ## 运行
 
@@ -30,3 +30,5 @@ npm run simulate
 - `roadmap-layout-test.js`：Roadmap 上下顺序、6 行、独立横滚、Compact/Mobile、筹码与控制台响应式约束。
 - `derived-road-test.js`：大眼仔、小路、曱甴路的 offset、结构比较、Tie/Pair 忽略、龙尾、碰撞、时间顺序与 500 局稳定性。
 - `repeat-bet-test.js`：Repeat snapshot、覆盖、原子余额校验、Pair、Undo、Clear 和状态锁定测试。
+- `burn-card-test.js`：A、5、9、10、J、Q、K 的 Burn Value、真实移除、单 Shoe 防重复、状态锁定以及与 Roadmap / Repeat 的隔离测试。
+- `cut-card-test.js`：Cut Threshold、单次触发、当前局完成、Last Hand、Shoe Complete、New Shoe 和手动/自动发牌回归测试。

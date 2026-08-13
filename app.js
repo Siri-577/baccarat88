@@ -12,14 +12,18 @@
   const AREA_MIN_BET = 10;
   const AREA_MAX_BET = 20000;
   const ROUND_MAX_BET = 50000;
-  const RESHUFFLE_THRESHOLD = 60;
-  const GAME_STATES = Object.freeze({ BETTING: "BETTING", ROUND_LOCKED: "ROUND_LOCKED", AUTO_DEALING: "AUTO_DEALING", REVEAL_READY: "REVEAL_READY", REVEALING: "REVEALING", AUTO_REVEALING: "AUTO_REVEALING", AUTO_DRAWING: "AUTO_DRAWING", SETTLING: "SETTLING", ROUND_END: "ROUND_END", DISCARDING: "DISCARDING" });
+  const MIN_CUT_REMAINING = 14;
+  const MAX_CUT_REMAINING = 26;
+  const GAME_STATES = Object.freeze({ BURNING: "BURNING", BETTING: "BETTING", ROUND_LOCKED: "ROUND_LOCKED", AUTO_DEALING: "AUTO_DEALING", REVEAL_READY: "REVEAL_READY", REVEALING: "REVEALING", AUTO_REVEALING: "AUTO_REVEALING", AUTO_DRAWING: "AUTO_DRAWING", SETTLING: "SETTLING", ROUND_END: "ROUND_END", DISCARDING: "DISCARDING" });
   const BET_LABELS = Object.freeze({ PLAYER: "闲 / PLAYER", BANKER: "庄 / BANKER", TIE: "和 / TIE", PLAYER_PAIR: "闲对 / PLAYER PAIR", BANKER_PAIR: "庄对 / BANKER PAIR" });
   const SUIT_SYMBOLS = Object.freeze({ spades: "♠", hearts: "♥", diamonds: "♦", clubs: "♣" });
   const DEBUG_DEAL_ANIMATION = false;
+  const DEBUG_BURN = root.__BACCARAT_DEBUG_BURN__ === true;
+  const DEBUG_BURN_UI = root.__BACCARAT_DEBUG_BURN_UI__ === true;
   const REVEAL_MODES = Object.freeze({ MANUAL: "MANUAL", AUTO: "AUTO" });
   const AUTO_REVEAL_INTERVAL_MS = 1000;
   const AUTO_REVEAL_START_DELAY_MS = 500;
+  const BURN_PRESENTATION_MS = 850;
   const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
   function formatMoney(value) {
@@ -48,15 +52,57 @@
       .map((key) => dealQueue.find((item) => `${item.side}-${item.cardIndex}` === key));
   }
 
+  function getBurnValue(card) {
+    if (!card || !card.rank) throw new TypeError("Burn Card requires a rank");
+    const value = ["10", "J", "Q", "K"].includes(card.rank) ? 10 : Number(card.rank === "A" ? 1 : card.rank);
+    if (!Number.isInteger(value) || value < 1 || value > 10) throw new RangeError(`Unsupported Burn Card rank: ${card.rank}`);
+    return value;
+  }
+
+  function createBurnState() {
+    return { completed: false, revealedCard: null, burnValue: 0, additionalCards: [], totalBurned: 0 };
+  }
+
+  function randomInteger(min, max, random = Math.random) {
+    return min + Math.floor(random() * (max - min + 1));
+  }
+
+  function createCutCardState(random = Math.random, forcedThreshold) {
+    const remainingThreshold = forcedThreshold ?? randomInteger(MIN_CUT_REMAINING, MAX_CUT_REMAINING, random);
+    if (!Number.isInteger(remainingThreshold) || remainingThreshold < MIN_CUT_REMAINING || remainingThreshold > MAX_CUT_REMAINING) throw new RangeError("Cut Card threshold is outside the supported range");
+    return { remainingThreshold, reached: false, reachedDuringRound: false, lastHandPending: false, lastHandActive: false, shoeEnding: false };
+  }
+
+  /** The only DOM visibility authority for the Burn Card overlay. */
+  function renderBurnPresentation(elements, game) {
+    const overlay = elements.burnCard;
+    if (!overlay) return;
+    const visible = game.burnPresentationVisible === true;
+    overlay.hidden = !visible;
+    const burn = game.burnState;
+    if (burn.revealedCard) {
+      elements.burnRank.textContent = `${burn.revealedCard.rank}${SUIT_SYMBOLS[burn.revealedCard.suit]}`;
+      elements.burnValue.textContent = `BURN VALUE ${burn.burnValue} · TOTAL ${burn.totalBurned}`;
+    }
+    if (DEBUG_BURN_UI) {
+      const style = typeof root.getComputedStyle === "function" ? root.getComputedStyle(overlay) : null;
+      console.log("[Burn UI] DOM state", { hidden: overlay.hidden, display: style?.display ?? null, opacity: style?.opacity ?? null, className: overlay.className });
+    }
+  }
+
   class BaccaratGameController {
-    constructor({ initialBalance = INITIAL_BALANCE, random = Math.random, autoRevealInterval = AUTO_REVEAL_INTERVAL_MS, autoRevealStartDelay = AUTO_REVEAL_START_DELAY_MS } = {}) {
+    constructor({ initialBalance = INITIAL_BALANCE, random = Math.random, autoRevealInterval = AUTO_REVEAL_INTERVAL_MS, autoRevealStartDelay = AUTO_REVEAL_START_DELAY_MS, debugForcedCutThreshold } = {}) {
       this.random = random;
       this.account = betting.createPlayerAccount(initialBalance);
       this.roundId = 1;
       this.shoeId = 1;
       this.selectedChip = DEFAULT_CHIP;
-      this.state = GAME_STATES.BETTING;
       this.shoe = this.createShuffledShoe();
+      this.cutCard = createCutCardState(this.random, debugForcedCutThreshold);
+      this.burnState = createBurnState();
+      this.performBurn();
+      this.burnPresentationVisible = true;
+      this.state = GAME_STATES.BETTING;
       this.bettingRound = betting.createBettingRound(this.roundId, this.account);
       this.betActionHistory = [];
       this.lastConfirmedBetSnapshot = null;
@@ -83,10 +129,77 @@
       this.autoRevealStartDelay = autoRevealStartDelay;
       this.roadHistory = [];
       this.hasRecordedRoadForCurrentRound = false;
+      this.isCurrentRoundLastHand = false;
     }
 
     createShuffledShoe() {
       return baccarat.shuffleShoe(baccarat.createShoe(8), this.random);
+    }
+
+    performBurn({ debugForcedRank } = {}) {
+      if (this.burnState.completed) return this.burnState;
+      if (debugForcedRank) {
+        const forcedIndex = this.shoe.findIndex((card) => card.rank === debugForcedRank);
+        if (forcedIndex < 0) throw new RangeError(`No ${debugForcedRank} card exists in Shoe`);
+        [this.shoe[forcedIndex], this.shoe[this.shoe.length - 1]] = [this.shoe[this.shoe.length - 1], this.shoe[forcedIndex]];
+      }
+      const revealedCard = baccarat.drawCard(this.shoe);
+      const burnValue = getBurnValue(revealedCard);
+      if (this.shoe.length < burnValue) throw new RangeError("Shoe does not contain enough cards for Burn");
+      const additionalCards = Array.from({ length: burnValue }, () => baccarat.drawCard(this.shoe));
+      this.burnState = { completed: true, revealedCard, burnValue, additionalCards, totalBurned: 1 + additionalCards.length };
+      if (DEBUG_BURN) console.log("[Burn] Revealed Card:", revealedCard, "[Burn] Burn Value:", burnValue, "[Burn] Additional Cards:", additionalCards.length, "[Burn] Total Burned:", this.burnState.totalBurned, "[Burn] Remaining Shoe:", this.shoe.length);
+      return this.burnState;
+    }
+
+    beginBurnPresentation() {
+      if (!this.burnState.completed || this.state !== GAME_STATES.BETTING) return false;
+      this.state = GAME_STATES.BURNING;
+      this.message = "BURN CARD · PREPARING SHOE";
+      return true;
+    }
+
+    completeBurnPresentation() {
+      if (this.state !== GAME_STATES.BURNING) return false;
+      this.state = GAME_STATES.BETTING;
+      this.message = "PLACE YOUR BETS";
+      return true;
+    }
+
+    startNewShoe({ debugForcedRank, debugForcedCutThreshold } = {}) {
+      if (![GAME_STATES.BETTING, GAME_STATES.ROUND_END].includes(this.state)) return this.reject("New Shoe is unavailable during a round");
+      this.shoe = this.createShuffledShoe();
+      this.shoeId += 1;
+      this.resetRoadmapForNewShoe();
+      this.cutCard = createCutCardState(this.random, debugForcedCutThreshold);
+      this.burnState = createBurnState();
+      this.performBurn({ debugForcedRank });
+      this.burnPresentationVisible = true;
+      this.state = GAME_STATES.BURNING;
+      this.message = "BURN CARD · PREPARING NEW SHOE";
+      return true;
+    }
+
+    checkCutCardAfterFormalDeal() {
+      if (this.cutCard.reached || this.shoe.length > this.cutCard.remainingThreshold) return false;
+      this.cutCard.reached = true;
+      this.cutCard.reachedDuringRound = true;
+      if (root.__BACCARAT_DEBUG_CUT__ === true) console.log("[Cut] CUT CARD REACHED", { threshold: this.cutCard.remainingThreshold, remaining: this.shoe.length });
+      return true;
+    }
+
+    completeCurrentRoundCutFlow() {
+      if (this.isCurrentRoundLastHand) {
+        this.cutCard.lastHandActive = false;
+        this.cutCard.shoeEnding = true;
+        if (root.__BACCARAT_DEBUG_CUT__ === true) console.log("[Cut] SHOE COMPLETE");
+        return;
+      }
+      if (this.cutCard.reachedDuringRound) {
+        this.cutCard.reachedDuringRound = false;
+        this.cutCard.lastHandPending = true;
+        if (root.__BACCARAT_DEBUG_CUT__ === true) console.log("[Cut] lastHandPending: true");
+      }
     }
 
     resetRoadmapForNewShoe() {
@@ -132,6 +245,8 @@
       try {
         betting.replaceOpenBets(this.account, this.bettingRound, snapshot);
         this.betActionHistory.push({ type: "SNAPSHOT", bets: beforeRepeat });
+        this.hideBurnPresentationAfterFirstBet();
+        if (DEBUG_BURN_UI) console.log("[Burn UI] repeat success", { totalBet: this.totalBet, burnPresentationVisible: this.burnPresentationVisible });
         this.message = `REPEAT · ${formatMoney(snapshotTotal)}`;
         return true;
       } catch (error) { return this.reject(error.message); }
@@ -157,6 +272,12 @@
       return false;
     }
 
+    hideBurnPresentationAfterFirstBet() {
+      if (!this.burnPresentationVisible || this.totalBet <= 0) return;
+      this.burnPresentationVisible = false;
+      if (DEBUG_BURN_UI) console.log("[Burn UI] hide requested", { totalBet: this.totalBet, burnPresentationVisible: this.burnPresentationVisible });
+    }
+
     placeSelectedBet(betType) {
       if (this.state !== GAME_STATES.BETTING) return this.reject("下注已关闭");
       if (!Object.values(betting.BET_TYPES).includes(betType)) return this.reject("无效下注区");
@@ -167,6 +288,8 @@
       try {
         betting.placeBet(this.account, this.bettingRound, betType, this.selectedChip);
         this.betActionHistory.push({ betType, amount: this.selectedChip });
+        this.hideBurnPresentationAfterFirstBet();
+        if (DEBUG_BURN_UI) console.log("[Burn UI] bet success", { totalBet: this.totalBet, burnPresentationVisible: this.burnPresentationVisible });
         this.message = `${BET_LABELS[betType]} +${formatMoney(this.selectedChip)}`;
         return true;
       } catch (error) {
@@ -203,18 +326,27 @@
     async prepareDeal(dealFaceDown, flipCard) {
       if (this.state !== GAME_STATES.BETTING) return this.reject("当前不能发牌");
       if (this.totalBet === 0) return this.reject("请先下注");
+      if (this.cutCard.lastHandPending && this.shoe.length < 6) {
+        this.cutCard.lastHandPending = false;
+        this.cutCard.shoeEnding = true;
+        this.state = GAME_STATES.ROUND_END;
+        this.message = "SHOE COMPLETE · NEW SHOE REQUIRED";
+        console.warn("[Cut Card] Not enough cards for Last Hand", this.shoe.length);
+        return false;
+      }
       betting.closeBetting(this.bettingRound);
       this.lastConfirmedBetSnapshot = this.captureCurrentBetSnapshot();
       this.currentRoundRevealMode = this.revealMode;
-      if (this.shoe.length < RESHUFFLE_THRESHOLD) {
-        this.shoe = this.createShuffledShoe();
-        this.shoeId += 1;
-        this.resetRoadmapForNewShoe();
-        this.message = "重新洗牌";
+      this.isCurrentRoundLastHand = this.cutCard.lastHandPending;
+      if (this.isCurrentRoundLastHand) {
+        this.cutCard.lastHandPending = false;
+        this.cutCard.lastHandActive = true;
+        if (root.__BACCARAT_DEBUG_CUT__ === true) console.log("[Cut] LAST HAND started");
       }
       try {
         // The real Baccarat Engine locks every card and result before UI reveal begins.
         this.roundResult = baccarat.playRound(this.shoe);
+        this.checkCutCardAfterFormalDeal();
         this.dealQueue = buildDealQueue(this.roundResult);
         this.roundDealPlan = this.dealQueue;
         this.revealQueue = [];
@@ -291,8 +423,9 @@
           await wait(160);
           this.settlement = betting.settleRound(this.account, this.bettingRound, this.roundResult);
           this.recordCurrentRoundRoad();
+          this.completeCurrentRoundCutFlow();
           this.state = GAME_STATES.ROUND_END;
-          this.message = `${this.roundResult.winner}${this.roundResult.winner === "TIE" ? "" : " WIN"} · 发牌完成`;
+          this.message = this.cutCard.shoeEnding ? "SHOE COMPLETE · 本靴结束" : `${this.roundResult.winner}${this.roundResult.winner === "TIE" ? "" : " WIN"} · 发牌完成`;
         } else {
           this.state = auto ? GAME_STATES.AUTO_REVEALING : GAME_STATES.REVEAL_READY;
           this.message = auto ? "AUTO REVEAL · 自动翻牌" : "READY TO REVEAL · 等待翻牌";
@@ -326,12 +459,36 @@
     handlePrimaryAction(dealFaceDown, flipCard, discardCards) {
       if (this.state === GAME_STATES.BETTING) return this.prepareDeal(dealFaceDown, flipCard);
       if (this.state === GAME_STATES.REVEAL_READY) return this.revealNextCard(flipCard);
-      if (this.state === GAME_STATES.ROUND_END) return this.nextRound(discardCards);
+      if (this.state === GAME_STATES.ROUND_END) return this.cutCard.shoeEnding ? this.startNewShoeAfterComplete(discardCards) : this.nextRound(discardCards);
       return this.reject("当前操作不可用");
     }
 
     // Compatibility alias for pre-V0.6.2 callers; it now locks the result only.
     dealRound() { return this.prepareDeal(); }
+
+    async startNewShoeAfterComplete(discardCards) {
+      if (this.state !== GAME_STATES.ROUND_END || !this.cutCard.shoeEnding) return this.reject("New Shoe is unavailable");
+      this.state = GAME_STATES.DISCARDING;
+      this.autoRevealRunId += 1;
+      this.autoRevealRunning = false;
+      this.message = "COLLECTING CARDS · 收牌中";
+      try { if (discardCards) await discardCards(getDiscardSequence(this.dealQueue, this.dealtKeys)); }
+      catch (error) { if (DEBUG_DEAL_ANIMATION) console.error("[DISCARD ANIMATION ERROR]", error); }
+      this.state = GAME_STATES.ROUND_END;
+      this.roundId += 1;
+      this.bettingRound = betting.createBettingRound(this.roundId, this.account);
+      this.betActionHistory = [];
+      this.roundResult = null;
+      this.settlement = null;
+      this.dealQueue = [];
+      this.revealQueue = [];
+      this.currentRevealIndex = 0;
+      this.dealtKeys.clear();
+      this.revealedKeys.clear();
+      this.revealedCards = { PLAYER: [], BANKER: [] };
+      this.hasRecordedRoadForCurrentRound = false;
+      return this.startNewShoe();
+    }
 
     async nextRound(discardCards) {
       if (this.state !== GAME_STATES.ROUND_END) return this.reject("请先完成当前局");
@@ -351,9 +508,11 @@
       this.currentDealIndex = 0;
       this.revealedCards = { PLAYER: [], BANKER: [] };
       this.isDealInputLocked = false;
+      this.isCurrentRoundLastHand = false;
       this.hasRecordedRoadForCurrentRound = false;
+      if (this.cutCard.lastHandPending) this.message = "LAST HAND · 本靴最后一局";
       this.state = GAME_STATES.BETTING;
-      this.message = "PLACE YOUR BETS · 请下注";
+      if (!this.cutCard.lastHandPending) this.message = "PLACE YOUR BETS · 请下注";
       return true;
     }
   }
@@ -382,7 +541,7 @@
       balance: byId("balance"), round: byId("round"), shoe: byId("shoe-id"), state: byId("game-state"), remaining: byId("remaining"), message: byId("message"),
       playerCards: byId("player-cards"), bankerCards: byId("banker-cards"), playerScore: byId("player-score"), bankerScore: byId("banker-score"),
       result: byId("result"), pairResult: byId("pair-result"), nextCard: byId("next-card-label"), playerScoreLabel: byId("player-score-label"), bankerScoreLabel: byId("banker-score-label"), totalBet: byId("total-bet"), totalReturn: byId("total-return"), netResult: byId("net-result"),
-      settlementDetails: byId("settlement-details"), undo: byId("undo"), clear: byId("clear"), deal: byId("deal"), repeat: byId("repeat-bet"),
+      settlementDetails: byId("settlement-details"), undo: byId("undo"), clear: byId("clear"), deal: byId("deal"), repeat: byId("repeat-bet"), burnCard: byId("burn-card"), burnRank: byId("burn-card-rank"), burnValue: byId("burn-card-value"),
       beadPlate: byId("bead-plate"), bigRoad: byId("big-road"), bigEyeBoy: byId("big-eye-boy"), smallRoad: byId("small-road"), cockroachPig: byId("cockroach-pig"), roadmapStats: byId("roadmap-stats"),
     };
     const roadmapToggle = byId("roadmap-toggle");
@@ -449,6 +608,7 @@
       elements.state.textContent = game.state;
       elements.remaining.textContent = game.shoe.length;
       elements.message.textContent = game.message;
+      renderBurnPresentation(elements, game);
       elements.totalBet.textContent = formatMoney(game.totalBet);
       renderRoadmaps();
       for (const button of betButtons) {
@@ -464,10 +624,10 @@
       elements.clear.disabled = !isBetting || game.totalBet === 0;
       elements.deal.disabled = !isBetting || game.totalBet === 0;
       const nextDeal = game.revealQueue[game.currentRevealIndex];
-      const actionText = game.state === GAME_STATES.BETTING ? ["DEAL", "发牌"] : game.state === GAME_STATES.ROUND_END ? ["NEXT ROUND", "下一局"] : game.state === GAME_STATES.DISCARDING ? ["COLLECTING", "收牌中"] : ["REVEAL", "翻牌"];
+      const actionText = game.state === GAME_STATES.BETTING ? ["DEAL", "发牌"] : game.state === GAME_STATES.ROUND_END && game.cutCard.shoeEnding ? ["NEW SHOE", "新牌靴"] : game.state === GAME_STATES.ROUND_END ? ["NEXT ROUND", "下一局"] : game.state === GAME_STATES.DISCARDING ? ["COLLECTING", "收牌中"] : ["REVEAL", "翻牌"];
       elements.deal.innerHTML = `${actionText[0]}<br><small>${actionText[1]}</small>`;
       elements.deal.disabled = (game.state === GAME_STATES.BETTING && game.totalBet === 0) || ![GAME_STATES.BETTING, GAME_STATES.REVEAL_READY, GAME_STATES.ROUND_END].includes(game.state) || game.isRevealInputLocked || game.autoDealRunning;
-      elements.nextCard.textContent = nextDeal ? `待翻牌：${nextDeal.label}` : game.state === GAME_STATES.ROUND_END ? "本局结束" : game.state === GAME_STATES.DISCARDING ? "正在收牌" : game.state === GAME_STATES.AUTO_DRAWING ? "正在补牌" : game.state === GAME_STATES.AUTO_DEALING ? "正在发牌" : "请先下注";
+      elements.nextCard.textContent = nextDeal ? `待翻牌：${nextDeal.label}` : game.cutCard.shoeEnding ? "SHOE COMPLETE · 本靴结束" : game.cutCard.lastHandPending ? "LAST HAND · 本靴最后一局" : game.state === GAME_STATES.ROUND_END ? "本局结束" : game.state === GAME_STATES.DISCARDING ? "正在收牌" : game.state === GAME_STATES.AUTO_DRAWING ? "正在补牌" : game.state === GAME_STATES.AUTO_DEALING ? "正在发牌" : "请先下注";
       const isFinal = game.state === GAME_STATES.ROUND_END;
       const playerVisible = game.revealedCards.PLAYER;
       const bankerVisible = game.revealedCards.BANKER;
@@ -561,13 +721,21 @@
       await Promise.all(tasks);
       const tray = document.querySelector(".discard-tray"); if (tray && tray.animate) await tray.animate([{ transform: "scale(1)" }, { transform: "scale(1.02)" }, { transform: "scale(1)" }], { duration: 110, easing: "ease-out" }).finished;
     }
-    elements.deal.addEventListener("click", async () => { const wasRoundEnd = game.state === GAME_STATES.ROUND_END; await game.handlePrimaryAction(animatePresentationCard, flipPresentationCard, discardRoundCards); if (wasRoundEnd) { initializeCardSlots(elements.playerCards, "PLAYER"); initializeCardSlots(elements.bankerCards, "BANKER"); document.querySelectorAll(".flying-card,.discard-clone").forEach((element) => element.remove()); } render(); });
+    elements.deal.addEventListener("click", async () => { const wasRoundEnd = game.state === GAME_STATES.ROUND_END; const wasShoeEnding = game.cutCard.shoeEnding; await game.handlePrimaryAction(animatePresentationCard, flipPresentationCard, discardRoundCards); if (wasRoundEnd) { initializeCardSlots(elements.playerCards, "PLAYER"); initializeCardSlots(elements.bankerCards, "BANKER"); document.querySelectorAll(".flying-card,.discard-clone").forEach((element) => element.remove()); } render(); if (wasShoeEnding) await presentInitialBurn(); });
     if (roadmapToggle) roadmapToggle.addEventListener("click", () => {
       const expanded = roadmap.classList.toggle("expanded");
       roadmapToggle.textContent = expanded ? "收起" : "展开";
       roadmapToggle.setAttribute("aria-expanded", String(expanded));
     });
+    async function presentInitialBurn() {
+      if (!game.beginBurnPresentation()) return;
+      render();
+      await wait(BURN_PRESENTATION_MS);
+      game.completeBurnPresentation();
+      render();
+    }
     render();
+    presentInitialBurn();
     return game;
   }
 
@@ -575,7 +743,7 @@
     const symbol = SUIT_SYMBOLS[card.suit]; const color = card.suit === "hearts" || card.suit === "diamonds" ? "red" : "black"; const third = index === 2 ? " third-card is-third-card" : "";
     return `<span class="card-shell${third}" data-card-key="${key}" data-card-position="${index + 1}" data-reveal-state="${revealed ? "FACE_UP" : "FACE_DOWN"}"><span class="card-inner${revealed ? " is-face-up" : " is-face-down"}"><span class="card-face card-back"></span><span class="card-face card-front ${color}"><strong>${card.rank}</strong><small>${symbol}</small></span></span></span>`;
   }
-  const api = { INITIAL_BALANCE, CHIP_VALUES, DEFAULT_CHIP, AREA_MIN_BET, AREA_MAX_BET, ROUND_MAX_BET, RESHUFFLE_THRESHOLD, GAME_STATES, formatMoney, buildDealQueue, getDealDuration, getDiscardSequence, BaccaratGameController, mountGame };
+  const api = { INITIAL_BALANCE, CHIP_VALUES, DEFAULT_CHIP, AREA_MIN_BET, AREA_MAX_BET, ROUND_MAX_BET, MIN_CUT_REMAINING, MAX_CUT_REMAINING, GAME_STATES, formatMoney, getBurnValue, createBurnState, createCutCardState, randomInteger, renderBurnPresentation, buildDealQueue, getDealDuration, getDiscardSequence, BaccaratGameController, mountGame };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.BaccaratApp = api;
   if (typeof window !== "undefined" && window.document) window.addEventListener("DOMContentLoaded", () => mountGame(window.document));
