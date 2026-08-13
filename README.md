@@ -1,6 +1,6 @@
-# 百家乐88 — V0.7.2 Cut Card System
+# 百家乐88 — V0.7.4 Mobile Table Layout Polish
 
-纯 JavaScript 的百家乐规则、下注、RTP 模拟与可玩桌面。V0.7.2 在真实 Burn Card 生命周期之上增加 Cut Card 阈值、Last Hand 和由玩家确认的 New Shoe 流程。
+纯 JavaScript 的百家乐规则、下注、RTP 模拟与可玩桌面。V0.7.4 为手机端建立独立 Equipment Zone，使 Discard / Shoe 与 PLAYER 发牌区保持稳定安全距离。
 
 ## 运行
 
@@ -32,3 +32,5 @@ npm run simulate
 - `repeat-bet-test.js`：Repeat snapshot、覆盖、原子余额校验、Pair、Undo、Clear 和状态锁定测试。
 - `burn-card-test.js`：A、5、9、10、J、Q、K 的 Burn Value、真实移除、单 Shoe 防重复、状态锁定以及与 Roadmap / Repeat 的隔离测试。
 - `cut-card-test.js`：Cut Threshold、单次触发、当前局完成、Last Hand、Shoe Complete、New Shoe 和手动/自动发牌回归测试。
+- `shoe-status-test.js`：Shoe Status 派生、DOM 单一来源、隐藏规则、Cut Event token 及 Last Hand / Shoe Complete 展示测试。
+- `mobile-table-layout-test.js`：移动端设备区尺寸、Player 安全距离、Card Slot 居中、第三张倾斜与横向溢出约束测试。

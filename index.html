@@ -12,6 +12,8 @@
     <section class="status-strip"><span class="status-label">GAME STATUS</span><strong id="message" aria-live="polite">PLACE YOUR BETS</strong><span class="debug">State <i id="game-state"></i> · Cards <i id="remaining"></i></span></section><div id="deal-animation-layer" aria-hidden="true"></div>
     <section class="casino-table">
       <section id="burn-card" class="burn-card" hidden aria-live="polite"><small>BURN CARD</small><strong id="burn-card-rank">--</strong><span id="burn-card-value">BURN VALUE --</span></section>
+      <section id="cut-card-event" class="cut-card-event" hidden aria-live="polite"><strong>CUT CARD REACHED</strong><span>切牌卡已到达</span></section>
+      <section id="shoe-status" class="shoe-status" aria-live="polite"></section>
       <div class="table-utility discard-tray"><span>DISCARD</span><small>弃牌盒</small><div class="tray-slots"></div></div><div class="table-utility shoe-visual"><span>SHOE</span><small>牌靴</small><div class="shoe-stack"></div></div>
       <section class="hands-stage"><article class="hand player-hand"><div class="hand-title"><span>PLAYER</span><small>闲</small></div><div id="player-cards" class="cards card-slots"></div><p><span id="player-score-label">CURRENT SCORE</span> <strong id="player-score">--</strong></p></article><article class="hand banker-hand"><div class="hand-title"><span>BANKER</span><small>庄</small></div><div id="banker-cards" class="cards card-slots"></div><p><span id="banker-score-label">CURRENT SCORE</span> <strong id="banker-score">--</strong></p></article></section>
       <section class="deal-prompt"><small>NEXT REVEAL</small><strong id="next-card-label">请先下注</strong></section><section class="outcome"><strong id="result">--</strong><span id="pair-result"></span></section>

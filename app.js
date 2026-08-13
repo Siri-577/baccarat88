@@ -24,6 +24,8 @@
   const AUTO_REVEAL_INTERVAL_MS = 1000;
   const AUTO_REVEAL_START_DELAY_MS = 500;
   const BURN_PRESENTATION_MS = 850;
+  const CUT_CARD_EVENT_MS = 2000;
+  const SHOE_STATUS = Object.freeze({ IN_PLAY: "IN_PLAY", CUT_REACHED: "CUT_REACHED", LAST_HAND_NEXT: "LAST_HAND_NEXT", LAST_HAND: "LAST_HAND", COMPLETE: "COMPLETE" });
   const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
   function formatMoney(value) {
@@ -90,6 +92,31 @@
     }
   }
 
+  function getShoePresentationState(game) {
+    const cut = game.cutCard;
+    if (cut.shoeEnding) return SHOE_STATUS.COMPLETE;
+    if (cut.lastHandActive || (cut.lastHandPending && game.state === GAME_STATES.BETTING)) return SHOE_STATUS.LAST_HAND;
+    if (cut.lastHandPending || cut.reached) return SHOE_STATUS.LAST_HAND_NEXT;
+    return SHOE_STATUS.IN_PLAY;
+  }
+
+  function renderShoeStatus(elements, game) {
+    const status = elements.shoeStatus;
+    if (!status) return;
+    const state = getShoePresentationState(game);
+    const copy = {
+      [SHOE_STATUS.IN_PLAY]: ["SHOE IN PLAY", "牌靴进行中"],
+      [SHOE_STATUS.LAST_HAND_NEXT]: ["LAST HAND NEXT", "下一局为本靴最后一局"],
+      [SHOE_STATUS.LAST_HAND]: ["LAST HAND", "本靴最后一局"],
+      [SHOE_STATUS.COMPLETE]: ["SHOE COMPLETE", "本靴结束 · 点击 NEW SHOE 开始新牌靴"],
+    }[state];
+    if (status.dataset.state !== state) {
+      status.dataset.state = state.toLowerCase();
+      status.innerHTML = `<strong>${copy[0]}</strong><span>${copy[1]}</span>`;
+      if (root.__BACCARAT_DEBUG_CUT__ === true) console.log(`[Cut UI] status = ${state}`);
+    }
+  }
+
   class BaccaratGameController {
     constructor({ initialBalance = INITIAL_BALANCE, random = Math.random, autoRevealInterval = AUTO_REVEAL_INTERVAL_MS, autoRevealStartDelay = AUTO_REVEAL_START_DELAY_MS, debugForcedCutThreshold } = {}) {
       this.random = random;
@@ -99,6 +126,8 @@
       this.selectedChip = DEFAULT_CHIP;
       this.shoe = this.createShuffledShoe();
       this.cutCard = createCutCardState(this.random, debugForcedCutThreshold);
+      this.cutEventRunId = 0;
+      this.onCutCardReached = null;
       this.burnState = createBurnState();
       this.performBurn();
       this.burnPresentationVisible = true;
@@ -172,6 +201,7 @@
       this.shoeId += 1;
       this.resetRoadmapForNewShoe();
       this.cutCard = createCutCardState(this.random, debugForcedCutThreshold);
+      this.cutEventRunId += 1;
       this.burnState = createBurnState();
       this.performBurn({ debugForcedRank });
       this.burnPresentationVisible = true;
@@ -185,6 +215,7 @@
       this.cutCard.reached = true;
       this.cutCard.reachedDuringRound = true;
       if (root.__BACCARAT_DEBUG_CUT__ === true) console.log("[Cut] CUT CARD REACHED", { threshold: this.cutCard.remainingThreshold, remaining: this.shoe.length });
+      this.onCutCardReached?.();
       return true;
     }
 
@@ -541,7 +572,7 @@
       balance: byId("balance"), round: byId("round"), shoe: byId("shoe-id"), state: byId("game-state"), remaining: byId("remaining"), message: byId("message"),
       playerCards: byId("player-cards"), bankerCards: byId("banker-cards"), playerScore: byId("player-score"), bankerScore: byId("banker-score"),
       result: byId("result"), pairResult: byId("pair-result"), nextCard: byId("next-card-label"), playerScoreLabel: byId("player-score-label"), bankerScoreLabel: byId("banker-score-label"), totalBet: byId("total-bet"), totalReturn: byId("total-return"), netResult: byId("net-result"),
-      settlementDetails: byId("settlement-details"), undo: byId("undo"), clear: byId("clear"), deal: byId("deal"), repeat: byId("repeat-bet"), burnCard: byId("burn-card"), burnRank: byId("burn-card-rank"), burnValue: byId("burn-card-value"),
+      settlementDetails: byId("settlement-details"), undo: byId("undo"), clear: byId("clear"), deal: byId("deal"), repeat: byId("repeat-bet"), burnCard: byId("burn-card"), burnRank: byId("burn-card-rank"), burnValue: byId("burn-card-value"), shoeStatus: byId("shoe-status"), cutCardEvent: byId("cut-card-event"),
       beadPlate: byId("bead-plate"), bigRoad: byId("big-road"), bigEyeBoy: byId("big-eye-boy"), smallRoad: byId("small-road"), cockroachPig: byId("cockroach-pig"), roadmapStats: byId("roadmap-stats"),
     };
     const roadmapToggle = byId("roadmap-toggle");
@@ -609,6 +640,7 @@
       elements.remaining.textContent = game.shoe.length;
       elements.message.textContent = game.message;
       renderBurnPresentation(elements, game);
+      renderShoeStatus(elements, game);
       elements.totalBet.textContent = formatMoney(game.totalBet);
       renderRoadmaps();
       for (const button of betButtons) {
@@ -656,6 +688,14 @@
     }
     game.onStateChange = render;
     game.onRoadmapChange = renderRoadmaps;
+    game.onCutCardReached = () => {
+      const event = elements.cutCardEvent;
+      if (!event) return;
+      const runId = ++game.cutEventRunId;
+      event.hidden = false;
+      if (root.__BACCARAT_DEBUG_CUT__ === true) console.log("[Cut UI] event = CUT_CARD_REACHED");
+      setTimeout(() => { if (runId === game.cutEventRunId) event.hidden = true; }, CUT_CARD_EVENT_MS);
+    };
     chipButtons.forEach((button) => button.addEventListener("click", () => { game.selectChip(Number(button.dataset.chip)); render(); }));
     if (elements.repeat) elements.repeat.addEventListener("click", () => { game.repeatLastBet(); render(); });
     revealModeButtons.forEach((button) => button.addEventListener("click", () => { game.setRevealMode(button.dataset.revealMode); render(); }));
@@ -743,7 +783,7 @@
     const symbol = SUIT_SYMBOLS[card.suit]; const color = card.suit === "hearts" || card.suit === "diamonds" ? "red" : "black"; const third = index === 2 ? " third-card is-third-card" : "";
     return `<span class="card-shell${third}" data-card-key="${key}" data-card-position="${index + 1}" data-reveal-state="${revealed ? "FACE_UP" : "FACE_DOWN"}"><span class="card-inner${revealed ? " is-face-up" : " is-face-down"}"><span class="card-face card-back"></span><span class="card-face card-front ${color}"><strong>${card.rank}</strong><small>${symbol}</small></span></span></span>`;
   }
-  const api = { INITIAL_BALANCE, CHIP_VALUES, DEFAULT_CHIP, AREA_MIN_BET, AREA_MAX_BET, ROUND_MAX_BET, MIN_CUT_REMAINING, MAX_CUT_REMAINING, GAME_STATES, formatMoney, getBurnValue, createBurnState, createCutCardState, randomInteger, renderBurnPresentation, buildDealQueue, getDealDuration, getDiscardSequence, BaccaratGameController, mountGame };
+  const api = { INITIAL_BALANCE, CHIP_VALUES, DEFAULT_CHIP, AREA_MIN_BET, AREA_MAX_BET, ROUND_MAX_BET, MIN_CUT_REMAINING, MAX_CUT_REMAINING, GAME_STATES, SHOE_STATUS, CUT_CARD_EVENT_MS, formatMoney, getBurnValue, createBurnState, createCutCardState, randomInteger, getShoePresentationState, renderBurnPresentation, renderShoeStatus, buildDealQueue, getDealDuration, getDiscardSequence, BaccaratGameController, mountGame };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.BaccaratApp = api;
   if (typeof window !== "undefined" && window.document) window.addEventListener("DOMContentLoaded", () => mountGame(window.document));
