@@ -1,6 +1,6 @@
-# 百家乐88 — V0.6.2 Manual Deal Flow
+# 百家乐88 — V0.6.3.3 Discard Tray Collection Animation
 
-纯 JavaScript 的百家乐规则、虚拟下注、真实牌靴 RTP 模拟及可玩网页版本。当前 UI 使用 Manual Deal Flow：DEAL 时锁定完整合法结果，玩家点击 NEXT CARD 逐张揭示，不能改变牌序或规则。
+纯 JavaScript 的百家乐规则、虚拟下注、真实牌靴 RTP 模拟及可玩网页版本。牌位采用持久化 DOM：已落桌牌保持不动、每张仅翻开一次，第三张补牌同样从 Shoe Travel 后才以背面落位；NEXT ROUND 会将本局牌面收进 Discard Tray 后才开启新局。
 
 ## 运行
 

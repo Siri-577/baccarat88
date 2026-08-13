@@ -9,7 +9,7 @@
 <body>
   <main class="casino-shell">
     <header class="casino-header"><div class="brand"><span>BACCARAT</span><strong>88</strong><small>VIP ELECTRONIC TABLE</small></div><div class="header-metrics"><div><small>BALANCE</small><strong id="balance">100,000</strong></div><div><small>SHOE</small><strong id="shoe-id">1</strong></div><div><small>HAND</small><strong id="round">1</strong></div></div></header>
-    <section class="status-strip"><span class="status-label">GAME STATUS</span><strong id="message" aria-live="polite">PLACE YOUR BETS</strong><span class="debug">State <i id="game-state"></i> · Cards <i id="remaining"></i></span></section>
+    <section class="status-strip"><span class="status-label">GAME STATUS</span><strong id="message" aria-live="polite">PLACE YOUR BETS</strong><span class="debug">State <i id="game-state"></i> · Cards <i id="remaining"></i></span></section><div id="deal-animation-layer" aria-hidden="true"></div>
     <section class="casino-table">
       <div class="table-utility discard-tray"><span>DISCARD</span><small>弃牌盒</small><div class="tray-slots"></div></div>
       <div class="table-utility shoe-visual"><span>SHOE</span><small>牌靴</small><div class="shoe-stack"></div></div>
@@ -17,7 +17,7 @@
         <article class="hand player-hand"><div class="hand-title"><span>PLAYER</span><small>闲</small></div><div id="player-cards" class="cards card-slots"><span class="placeholder">等待发牌</span></div><p><span id="player-score-label">CURRENT SCORE</span> <strong id="player-score">--</strong></p></article>
         <article class="hand banker-hand"><div class="hand-title"><span>BANKER</span><small>庄</small></div><div id="banker-cards" class="cards card-slots"><span class="placeholder">等待发牌</span></div><p><span id="banker-score-label">CURRENT SCORE</span> <strong id="banker-score">--</strong></p></article>
       </section>
-      <section class="deal-prompt"><small>NEXT CARD</small><strong id="next-card-label">请先下注</strong></section>
+      <section class="deal-prompt"><small>NEXT REVEAL</small><strong id="next-card-label">请先下注</strong></section>
       <section class="outcome"><strong id="result">--</strong><span id="pair-result"></span></section>
       <section class="bet-grid" aria-label="下注区">
         <button class="bet-area player-bet" data-bet-type="PLAYER"><b>PLAYER</b><span>闲</span><em>1 : 1</em><i>BET <strong class="bet-amount">0</strong></i></button>
