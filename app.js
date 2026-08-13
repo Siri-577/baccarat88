@@ -59,6 +59,7 @@
       this.shoe = this.createShuffledShoe();
       this.bettingRound = betting.createBettingRound(this.roundId, this.account);
       this.betActionHistory = [];
+      this.lastConfirmedBetSnapshot = null;
       this.roundResult = null;
       this.settlement = null;
       this.dealQueue = [];
@@ -91,7 +92,7 @@
     resetRoadmapForNewShoe() {
       this.roadHistory = [];
       this.hasRecordedRoadForCurrentRound = false;
-      this.onRoadmapChange?.();
+      try { this.onRoadmapChange?.(); } catch (error) { console.error("[ROADMAP ERROR]", error); }
     }
 
     recordCurrentRoundRoad() {
@@ -100,12 +101,40 @@
       if (latest && latest.shoeId !== this.shoeId) this.resetRoadmapForNewShoe();
       this.roadHistory.push(roadmapEngine.createRoadHistoryEntry(this.roundResult, { shoeId: this.shoeId, roundId: this.roundId }));
       this.hasRecordedRoadForCurrentRound = true;
-      this.onRoadmapChange?.();
+      try { this.onRoadmapChange?.(); } catch (error) { console.error("[ROADMAP ERROR]", error); }
       return true;
     }
 
     get totalBet() {
       return betting.roundMoney(Object.values(this.bettingRound.bets).reduce((sum, amount) => sum + amount, 0));
+    }
+
+    captureCurrentBetSnapshot() { return { ...this.bettingRound.bets }; }
+
+    getBetSnapshotTotal(snapshot) {
+      return betting.roundMoney(Object.values(betting.BET_TYPES).reduce((sum, type) => sum + (snapshot?.[type] || 0), 0));
+    }
+
+    canRepeatLastBet() {
+      if (this.state !== GAME_STATES.BETTING || !this.lastConfirmedBetSnapshot) return false;
+      const total = this.getBetSnapshotTotal(this.lastConfirmedBetSnapshot);
+      const availableAfterRefund = betting.roundMoney(this.account.balance + this.totalBet);
+      return total > 0 && total <= ROUND_MAX_BET && total <= availableAfterRefund;
+    }
+
+    repeatLastBet() {
+      if (this.state !== GAME_STATES.BETTING) return this.reject("Repeat is available only while betting is open");
+      if (!this.lastConfirmedBetSnapshot || this.getBetSnapshotTotal(this.lastConfirmedBetSnapshot) <= 0) return this.reject("No previous bet to repeat");
+      const snapshot = { ...this.lastConfirmedBetSnapshot };
+      const snapshotTotal = this.getBetSnapshotTotal(snapshot);
+      if (snapshotTotal > ROUND_MAX_BET || Object.values(betting.BET_TYPES).some((type) => snapshot[type] > AREA_MAX_BET)) return this.reject("Previous bet exceeds table limits");
+      const beforeRepeat = this.captureCurrentBetSnapshot();
+      try {
+        betting.replaceOpenBets(this.account, this.bettingRound, snapshot);
+        this.betActionHistory.push({ type: "SNAPSHOT", bets: beforeRepeat });
+        this.message = `REPEAT · ${formatMoney(snapshotTotal)}`;
+        return true;
+      } catch (error) { return this.reject(error.message); }
     }
 
     selectChip(amount) {
@@ -149,6 +178,10 @@
       if (this.state !== GAME_STATES.BETTING) return this.reject("下注已关闭");
       const action = this.betActionHistory.pop();
       if (!action) return this.reject("没有可撤销的下注");
+      if (action.type === "SNAPSHOT") {
+        try { betting.replaceOpenBets(this.account, this.bettingRound, action.bets); this.message = "已撤销重复下注"; return true; }
+        catch (error) { this.betActionHistory.push(action); return this.reject(error.message); }
+      }
       this.bettingRound.bets[action.betType] = betting.roundMoney(this.bettingRound.bets[action.betType] - action.amount);
       this.account.balance = betting.roundMoney(this.account.balance + action.amount);
       this.bettingRound.balanceAfterBet = this.account.balance;
@@ -171,6 +204,7 @@
       if (this.state !== GAME_STATES.BETTING) return this.reject("当前不能发牌");
       if (this.totalBet === 0) return this.reject("请先下注");
       betting.closeBetting(this.bettingRound);
+      this.lastConfirmedBetSnapshot = this.captureCurrentBetSnapshot();
       this.currentRoundRevealMode = this.revealMode;
       if (this.shoe.length < RESHUFFLE_THRESHOLD) {
         this.shoe = this.createShuffledShoe();
@@ -348,8 +382,8 @@
       balance: byId("balance"), round: byId("round"), shoe: byId("shoe-id"), state: byId("game-state"), remaining: byId("remaining"), message: byId("message"),
       playerCards: byId("player-cards"), bankerCards: byId("banker-cards"), playerScore: byId("player-score"), bankerScore: byId("banker-score"),
       result: byId("result"), pairResult: byId("pair-result"), nextCard: byId("next-card-label"), playerScoreLabel: byId("player-score-label"), bankerScoreLabel: byId("banker-score-label"), totalBet: byId("total-bet"), totalReturn: byId("total-return"), netResult: byId("net-result"),
-      settlementDetails: byId("settlement-details"), undo: byId("undo"), clear: byId("clear"), deal: byId("deal"),
-      beadPlate: byId("bead-plate"), bigRoad: byId("big-road"), roadmapStats: byId("roadmap-stats"),
+      settlementDetails: byId("settlement-details"), undo: byId("undo"), clear: byId("clear"), deal: byId("deal"), repeat: byId("repeat-bet"),
+      beadPlate: byId("bead-plate"), bigRoad: byId("big-road"), bigEyeBoy: byId("big-eye-boy"), smallRoad: byId("small-road"), cockroachPig: byId("cockroach-pig"), roadmapStats: byId("roadmap-stats"),
     };
     const roadmapToggle = byId("roadmap-toggle");
     const roadmap = document.querySelector(".roadmap");
@@ -374,20 +408,30 @@
       if (!elements.beadPlate || !elements.bigRoad) return;
       const beadCells = roadmapEngine.buildBeadPlate(game.roadHistory);
       const bigRoad = roadmapEngine.buildBigRoad(game.roadHistory);
+      const bigEyeBoy = roadmapEngine.buildBigEyeBoy(bigRoad);
+      const smallRoad = roadmapEngine.buildSmallRoad(bigRoad);
+      const cockroachPig = roadmapEngine.buildCockroachPig(bigRoad);
       const renderCells = (container, cells, type) => {
+        if (!container) return;
         const maxCol = Math.max(5, ...cells.map((cell) => cell.col));
         container.style.setProperty("--road-cols", String(maxCol + 1));
         container.innerHTML = cells.map((cell) => {
           const isBead = type === "bead";
+          const isDerived = type.startsWith("derived-");
           const label = cell.winner === "BANKER" ? "庄" : cell.winner === "PLAYER" ? "闲" : "和";
           const markers = isBead ? `<i class="pair-marker banker-pair" aria-hidden="true" ${cell.bankerPair ? "" : "hidden"}></i><i class="pair-marker player-pair" aria-hidden="true" ${cell.playerPair ? "" : "hidden"}></i>` : "";
           const tie = !isBead && cell.tieCount ? `<em class="big-road-tie">${cell.tieCount > 1 ? cell.tieCount : ""}</em>` : "";
-          return `<span class="road-cell ${isBead ? `bead-${cell.winner.toLowerCase()}` : `big-${cell.winner.toLowerCase()}`}" data-row="${cell.row}" data-col="${cell.col}" style="grid-row:${cell.row + 1};grid-column:${cell.col + 1}" title="${cell.winner}">${isBead ? label : ""}${markers}${tie}</span>`;
+          const cellClass = isBead ? `bead-${cell.winner.toLowerCase()}` : isDerived ? `derived-cell ${type} derived-${cell.color.toLowerCase()}` : `big-${cell.winner.toLowerCase()}`;
+          return `<span class="road-cell ${cellClass}" data-row="${cell.row}" data-col="${cell.col}" style="grid-row:${cell.row + 1};grid-column:${cell.col + 1}" title="${isDerived ? cell.color : cell.winner}">${isBead ? label : ""}${markers}${tie}</span>`;
         }).join("");
       };
       renderCells(elements.beadPlate, beadCells, "bead");
       renderCells(elements.bigRoad, bigRoad.cells, "big");
-      for (const grid of [elements.beadPlate, elements.bigRoad]) {
+      renderCells(elements.bigEyeBoy, bigEyeBoy.cells, "derived-eye");
+      renderCells(elements.smallRoad, smallRoad.cells, "derived-small");
+      renderCells(elements.cockroachPig, cockroachPig.cells, "derived-cockroach");
+      for (const grid of [elements.beadPlate, elements.bigRoad, elements.bigEyeBoy, elements.smallRoad, elements.cockroachPig]) {
+        if (!grid) continue;
         const scroll = grid.closest(".road-scroll");
         if (scroll) scroll.scrollLeft = scroll.scrollWidth;
       }
@@ -413,6 +457,7 @@
         button.querySelector(".bet-amount").textContent = formatMoney(game.bettingRound.bets[type]);
       }
       for (const button of chipButtons) button.classList.toggle("selected", Number(button.dataset.chip) === game.selectedChip);
+      if (elements.repeat) elements.repeat.disabled = !game.canRepeatLastBet();
       const modeUnlocked = [GAME_STATES.BETTING, GAME_STATES.ROUND_END].includes(game.state);
       for (const button of revealModeButtons) { const selected = button.dataset.revealMode === game.revealMode; button.disabled = !modeUnlocked; button.classList.toggle("selected", selected); button.setAttribute("aria-pressed", String(selected)); }
       elements.undo.disabled = !isBetting || game.betActionHistory.length === 0;
@@ -452,6 +497,7 @@
     game.onStateChange = render;
     game.onRoadmapChange = renderRoadmaps;
     chipButtons.forEach((button) => button.addEventListener("click", () => { game.selectChip(Number(button.dataset.chip)); render(); }));
+    if (elements.repeat) elements.repeat.addEventListener("click", () => { game.repeatLastBet(); render(); });
     revealModeButtons.forEach((button) => button.addEventListener("click", () => { game.setRevealMode(button.dataset.revealMode); render(); }));
     betButtons.forEach((button) => button.addEventListener("click", () => { game.placeSelectedBet(button.dataset.betType); render(); }));
     elements.undo.addEventListener("click", () => { game.undoBet(); render(); });

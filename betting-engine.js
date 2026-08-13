@@ -89,6 +89,29 @@ function placeBet(account, bettingRound, betType, amount) {
   return { betType, amount: stake, totalStake: bettingRound.bets[betType], balance: account.balance };
 }
 
+/** Transactionally replaces all open bets. Used by UI shortcuts such as Repeat Bet. */
+function replaceOpenBets(account, bettingRound, nextBets) {
+  assertAccount(account);
+  if (!bettingRound || bettingRound.status !== BETTING_STATES.BETTING_OPEN || bettingRound.settled) {
+    throw new Error("Bets can only be replaced while betting is open");
+  }
+  if (!nextBets || typeof nextBets !== "object") throw new TypeError("nextBets must be an object");
+  const normalized = createEmptyBets();
+  for (const type of BET_TYPE_LIST) {
+    const amount = nextBets[type] === undefined ? 0 : nextBets[type];
+    if (!Number.isFinite(amount) || amount < 0) throw new TypeError("Replacement bets must be non-negative finite numbers");
+    normalized[type] = roundMoney(amount);
+  }
+  const currentTotal = roundMoney(BET_TYPE_LIST.reduce((sum, type) => sum + bettingRound.bets[type], 0));
+  const nextTotal = roundMoney(BET_TYPE_LIST.reduce((sum, type) => sum + normalized[type], 0));
+  const availableAfterRefund = roundMoney(account.balance + currentTotal);
+  if (nextTotal > availableAfterRefund) throw new RangeError("Insufficient balance for replacement bets");
+  bettingRound.bets = normalized;
+  account.balance = roundMoney(availableAfterRefund - nextTotal);
+  bettingRound.balanceAfterBet = account.balance;
+  return { bets: { ...normalized }, totalBet: nextTotal, balance: account.balance };
+}
+
 function closeBetting(bettingRound) {
   if (!bettingRound || bettingRound.status !== BETTING_STATES.BETTING_OPEN) {
     throw new Error("Only an open betting round can be closed");
@@ -188,7 +211,7 @@ function resetBets(bettingRound) {
 const bettingEngineApi = {
   BET_TYPES, PAYTABLE, BETTING_STATES, OUTCOMES,
   roundMoney, createPlayerAccount, createEmptyBets, createBettingRound,
-  placeBet, closeBetting, settleBet, settleBets, settleRound, resetBets,
+  placeBet, replaceOpenBets, closeBetting, settleBet, settleBets, settleRound, resetBets,
 };
 
 if (typeof module !== "undefined" && module.exports) module.exports = bettingEngineApi;

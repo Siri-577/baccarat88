@@ -1,0 +1,28 @@
+"use strict";
+const assert = require("node:assert/strict");
+const app = require("./app");
+const betting = require("./betting-engine");
+let passed = 0; let failed = 0;
+function test(name, fn) { tests.push({ name, fn }); }
+const tests = [];
+const empty = () => betting.createEmptyBets();
+function snapshot(values) { return { ...empty(), ...values }; }
+function place(game, type, amount) { game.selectedChip = amount; assert.equal(game.placeSelectedBet(type), true); }
+
+test("Repeat starts disabled without a confirmed snapshot", () => { const game=new app.BaccaratGameController(); assert.equal(game.lastConfirmedBetSnapshot,null); assert.equal(game.canRepeatLastBet(),false); assert.equal(game.repeatLastBet(),false); });
+test("DEAL captures the confirmed multi-area snapshot", async () => { const game=new app.BaccaratGameController(); place(game,"PLAYER",100);place(game,"TIE",50);place(game,"PLAYER_PAIR",25);await game.prepareDeal(async()=>{});assert.deepEqual(game.lastConfirmedBetSnapshot,snapshot({PLAYER:100,TIE:50,PLAYER_PAIR:25})); });
+test("Repeat is available only in BETTING", () => { const game=new app.BaccaratGameController();game.lastConfirmedBetSnapshot=snapshot({PLAYER:100});assert.equal(game.canRepeatLastBet(),true);game.state=app.GAME_STATES.AUTO_DEALING;assert.equal(game.canRepeatLastBet(),false);assert.equal(game.repeatLastBet(),false);game.state=app.GAME_STATES.ROUND_END;assert.equal(game.canRepeatLastBet(),false); });
+test("Repeat restores all main bet areas", () => { const game=new app.BaccaratGameController();game.lastConfirmedBetSnapshot=snapshot({PLAYER:100,BANKER:200,TIE:50});assert.equal(game.repeatLastBet(),true);assert.deepEqual(game.bettingRound.bets,snapshot({PLAYER:100,BANKER:200,TIE:50})); });
+test("Repeat restores both Pair bets", () => { const game=new app.BaccaratGameController();game.lastConfirmedBetSnapshot=snapshot({PLAYER_PAIR:25,BANKER_PAIR:35});assert.equal(game.repeatLastBet(),true);assert.deepEqual(game.bettingRound.bets,snapshot({PLAYER_PAIR:25,BANKER_PAIR:35})); });
+test("Repeat overwrites current bets instead of adding", () => { const game=new app.BaccaratGameController();place(game,"BANKER",200);game.lastConfirmedBetSnapshot=snapshot({PLAYER:100,TIE:50});assert.equal(game.repeatLastBet(),true);assert.deepEqual(game.bettingRound.bets,snapshot({PLAYER:100,TIE:50})); });
+test("Repeat twice does not double the stake", () => { const game=new app.BaccaratGameController();game.lastConfirmedBetSnapshot=snapshot({PLAYER:100});game.repeatLastBet();game.repeatLastBet();assert.deepEqual(game.bettingRound.bets,snapshot({PLAYER:100})); });
+test("Repeat is atomic when balance is insufficient", () => { const game=new app.BaccaratGameController({initialBalance:100});place(game,"PLAYER",50);const before={bets:{...game.bettingRound.bets},balance:game.account.balance};game.lastConfirmedBetSnapshot=snapshot({BANKER:150});assert.equal(game.repeatLastBet(),false);assert.deepEqual(game.bettingRound.bets,before.bets);assert.equal(game.account.balance,before.balance); });
+test("Repeat has one-step Undo back to pre-repeat bets", () => { const game=new app.BaccaratGameController();place(game,"BANKER",200);game.lastConfirmedBetSnapshot=snapshot({PLAYER:100,TIE:50});game.repeatLastBet();assert.equal(game.undoBet(),true);assert.deepEqual(game.bettingRound.bets,snapshot({BANKER:200})); });
+test("Clear does not erase Repeat snapshot", () => { const game=new app.BaccaratGameController();game.lastConfirmedBetSnapshot=snapshot({PLAYER:100,TIE:50});game.repeatLastBet();game.clearBets();assert.deepEqual(game.bettingRound.bets,empty());assert.equal(game.repeatLastBet(),true);assert.deepEqual(game.bettingRound.bets,snapshot({PLAYER:100,TIE:50})); });
+test("Repeat keeps the selected chip for a manual add", () => { const game=new app.BaccaratGameController();game.selectedChip=50;game.lastConfirmedBetSnapshot=snapshot({PLAYER:100});game.repeatLastBet();assert.equal(game.selectedChip,50);assert.equal(game.placeSelectedBet("BANKER"),true);assert.deepEqual(game.bettingRound.bets,snapshot({PLAYER:100,BANKER:50})); });
+test("Repeat snapshot survives a Roadmap New Shoe reset", () => { const game=new app.BaccaratGameController();game.lastConfirmedBetSnapshot=snapshot({PLAYER:100});game.roadHistory.push({winner:"BANKER"});game.resetRoadmapForNewShoe();assert.equal(game.roadHistory.length,0);assert.deepEqual(game.lastConfirmedBetSnapshot,snapshot({PLAYER:100})); });
+test("Repeat snapshot is not changed by Repeat itself", () => { const game=new app.BaccaratGameController();const last=snapshot({PLAYER:100,TIE:50});game.lastConfirmedBetSnapshot=last;game.repeatLastBet();assert.deepEqual(game.lastConfirmedBetSnapshot,last); });
+test("Repeat does not depend on Manual or Auto reveal mode", () => { for(const mode of ["MANUAL","AUTO"]){const game=new app.BaccaratGameController();game.revealMode=mode;game.lastConfirmedBetSnapshot=snapshot({PLAYER:100});assert.equal(game.repeatLastBet(),true);assert.equal(game.bettingRound.bets.PLAYER,100);} });
+test("replaceOpenBets engine helper is transactional", () => { const account=betting.createPlayerAccount(100);const round=betting.createBettingRound(1,account);betting.placeBet(account,round,"PLAYER",50);assert.throws(()=>betting.replaceOpenBets(account,round,snapshot({BANKER:150})));assert.equal(account.balance,50);assert.equal(round.bets.PLAYER,50); });
+
+(async()=>{for(const {name,fn} of tests){try{await fn();passed++;console.log(`PASS: ${name}`)}catch(error){failed++;console.error(`FAIL: ${name} — ${error.message}`)}}console.log(`\nTEST SUMMARY: Passed: ${passed}; Failed: ${failed}`);if(failed)process.exitCode=1;})();

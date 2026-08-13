@@ -1,6 +1,6 @@
-# 百家乐88 — V0.6.4.1 Roadmap Responsive Layout Refinement
+# 百家乐88 — V0.6.5.1 Repeat Bet & Derived Roads Layout Refinement
 
-纯 JavaScript 的百家乐规则、下注、RTP 模拟与可玩桌面。V0.6.4.1 保留现有 Road History 与路纸算法，并将珠盘路和大路优化为上下全宽布局，支持独立横向滚动与紧凑响应式控制台。
+纯 JavaScript 的百家乐规则、下注、RTP 模拟与可玩桌面。V0.6.5.1 新增完整分区的 REPEAT 下注恢复，并将三条派生路调整为桌面三栏、移动端内部横向滚动。
 
 ## 运行
 
@@ -28,3 +28,5 @@ npm run simulate
 - `app.js`：Casino Table、发牌/翻牌/弃牌表现层、Manual / Auto Reveal、Road History 生命周期与 Roadmap UI。
 - `roadmap-test.js`：Roadmap Core 的 20+ 算法测试，包括 Tie、Leading Tie、Dragon Tail、碰撞与 500 局稳定性。
 - `roadmap-layout-test.js`：Roadmap 上下顺序、6 行、独立横滚、Compact/Mobile、筹码与控制台响应式约束。
+- `derived-road-test.js`：大眼仔、小路、曱甴路的 offset、结构比较、Tie/Pair 忽略、龙尾、碰撞、时间顺序与 500 局稳定性。
+- `repeat-bet-test.js`：Repeat snapshot、覆盖、原子余额校验、Pair、Undo、Clear 和状态锁定测试。

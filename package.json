@@ -1,15 +1,17 @@
 {
   "name": "baccarat88-math-engine",
-  "version": "0.6.4.1",
+  "version": "0.6.5.1",
   "private": true,
   "scripts": {
-    "test": "node baccarat-test.js && node betting-test.js && node simulator-test.js && node roadmap-test.js && node roadmap-layout-test.js && node app-test.js",
+    "test": "node baccarat-test.js && node betting-test.js && node simulator-test.js && node roadmap-test.js && node derived-road-test.js && node roadmap-layout-test.js && node repeat-bet-test.js && node app-test.js",
     "test:baccarat": "node baccarat-test.js",
     "test:betting": "node betting-test.js",
     "test:simulator": "node simulator-test.js",
     "test:app": "node app-test.js",
     "test:roadmap": "node roadmap-test.js",
     "test:layout": "node roadmap-layout-test.js",
+    "test:derived": "node derived-road-test.js",
+    "test:repeat": "node repeat-bet-test.js",
     "simulate": "node baccarat-simulator.js"
   }
 }
