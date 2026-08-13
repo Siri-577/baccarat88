@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Baccarat 88 — V0.6.3.4</title>
+  <title>百家乐 88 — V0.6.4</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -15,11 +15,11 @@
       <section class="hands-stage"><article class="hand player-hand"><div class="hand-title"><span>PLAYER</span><small>闲</small></div><div id="player-cards" class="cards card-slots"></div><p><span id="player-score-label">CURRENT SCORE</span> <strong id="player-score">--</strong></p></article><article class="hand banker-hand"><div class="hand-title"><span>BANKER</span><small>庄</small></div><div id="banker-cards" class="cards card-slots"></div><p><span id="banker-score-label">CURRENT SCORE</span> <strong id="banker-score">--</strong></p></article></section>
       <section class="deal-prompt"><small>NEXT REVEAL</small><strong id="next-card-label">请先下注</strong></section><section class="outcome"><strong id="result">--</strong><span id="pair-result"></span></section>
       <section class="bet-grid" aria-label="下注区"><button class="bet-area player-bet" data-bet-type="PLAYER"><b>PLAYER</b><span>闲</span><em>1 : 1</em><i>BET <strong class="bet-amount">0</strong></i></button><button class="bet-area tie-bet" data-bet-type="TIE"><b>TIE</b><span>和</span><em>8 : 1</em><i>BET <strong class="bet-amount">0</strong></i></button><button class="bet-area banker-bet" data-bet-type="BANKER"><b>BANKER</b><span>庄</span><em>0.95 : 1</em><i>BET <strong class="bet-amount">0</strong></i></button><button class="bet-area pair-bet" data-bet-type="PLAYER_PAIR"><b>PLAYER PAIR</b><span>闲对</span><em>11 : 1</em><i>BET <strong class="bet-amount">0</strong></i></button><button class="bet-area pair-bet" data-bet-type="BANKER_PAIR"><b>BANKER PAIR</b><span>庄对</span><em>11 : 1</em><i>BET <strong class="bet-amount">0</strong></i></button></section>
-      <section class="roadmap"><div class="roadmap-heading"><div><b>ROADMAP</b><span>路纸预留</span></div><button id="roadmap-toggle" type="button" aria-expanded="false">展开</button></div><div class="roadmap-content"><div><small>珠盘路</small><p>○ ○ ○ ○ ○ ○ ○ ○</p></div><div><small>大路</small><p>○ ○ ○ ○ ○ ○ ○ ○</p></div></div></section>
+      <section class="roadmap"><div class="roadmap-heading"><div><b>ROADMAP</b><span id="roadmap-stats">0 HANDS · CURRENT SHOE</span></div><button id="roadmap-toggle" type="button" aria-expanded="false">展开</button></div><div class="roadmap-content"><section class="road-panel"><small>珠盘路 · BEAD PLATE</small><div class="road-scroll"><div id="bead-plate" class="road-grid bead-plate" aria-label="珠盘路"></div></div></section><section class="road-panel"><small>大路 · BIG ROAD</small><div class="road-scroll"><div id="big-road" class="road-grid big-road" aria-label="大路"></div></div></section></div></section>
     </section>
     <section class="control-console"><div class="total-bet"><small>TOTAL BET</small><strong id="total-bet">0</strong></div><div class="chips" aria-label="筹码"><button data-chip="10">10</button><button data-chip="50">50</button><button data-chip="100">100</button><button data-chip="500">500</button><button data-chip="1000">1K</button><button data-chip="5000">5K</button></div><div class="reveal-mode" aria-label="Reveal mode"><small>REVEAL MODE</small><div><button data-reveal-mode="MANUAL" aria-pressed="true">MANUAL</button><button data-reveal-mode="AUTO" aria-pressed="false">AUTO</button></div></div><div class="actions"><button id="undo">UNDO<br><small>撤销</small></button><button id="clear">CLEAR<br><small>清除</small></button><button id="deal" class="primary-action">DEAL<br><small>发牌</small></button></div></section>
     <section class="settlement"><div><small>TOTAL RETURN</small><strong id="total-return">--</strong></div><div><small>NET RESULT</small><strong id="net-result">--</strong></div><ul id="settlement-details"></ul></section>
   </main>
-  <script src="baccarat-engine.js"></script><script src="betting-engine.js"></script><script src="app.js"></script>
+  <script src="baccarat-engine.js"></script><script src="betting-engine.js"></script><script src="roadmap-engine.js"></script><script src="app.js"></script>
 </body>
 </html>

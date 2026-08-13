@@ -1,31 +1,30 @@
-# 百家乐88 — V0.6.3.5 Control Console Layout & Auto Settlement Fix
+# 百家乐88 — V0.6.4.1 Roadmap Responsive Layout Refinement
 
-纯 JavaScript 的百家乐规则、虚拟下注、真实牌靴 RTP 模拟及可玩网页版本。Reveal Mode 与主操作位于同一控制台；AUTO 的最后一张翻开后会主动刷新为 FINAL SCORE、结果、结算与 NEXT ROUND，无需额外用户操作。
+纯 JavaScript 的百家乐规则、下注、RTP 模拟与可玩桌面。V0.6.4.1 保留现有 Road History 与路纸算法，并将珠盘路和大路优化为上下全宽布局，支持独立横向滚动与紧凑响应式控制台。
 
 ## 运行
 
-需要 Node.js 18+：
-
 ```bash
 npm test
-
-# 运行 1,000,000 局正式模拟，并生成 simulation-report.json / .txt
 npm run simulate
 ```
 
+使用浏览器直接打开 `index.html` 即可游玩。
+
+## Roadmap Core
+
+- `roadmap-engine.js`：无 DOM 依赖的纯算法；提供 Road History Entry、6 行珠盘路与大路。
+- 结算完成后才写入一条 Road History；Manual / Auto 共用同一入口，并有单局防重复保护。
+- 珠盘路逐局记录庄、闲、和及庄对/闲对标记，按照上到下、再由左至右排列。
+- 大路仅以庄/闲建立 streak；Tie 附着到最近的有效格，支持连续 Tie、开局 Tie、龙尾与碰撞右转。
+- NEXT ROUND 不清路纸；新的 Shoe 会通过 `resetRoadmapForNewShoe()` 清空路史。
+- 桌面端默认紧凑显示，可展开；移动端默认收起，展开后仅路纸内部横向滚动。
+
 ## 模块
 
-- `baccarat-engine.js`：8 副牌 Shoe、Fisher-Yates 洗牌、抽牌、点数、Natural、Player/Banker 第三张规则、Pair、胜负及单局执行。
-- `betting-engine.js`：余额、下注区、锁定状态、赔率、Tie Push、Pair 独立结算、返还及重复结算保护。
-- `baccarat-simulator.js`：连续 8 副牌靴模拟、概率/用牌/RTP/House Edge 统计及报告生成。
-- `index.html`、`style.css`、`app.js`：Casino Table Foundation；包含深绿桌布、Player/Banker 手区、Shoe、Discard Tray、下注印刷区、路纸预留及控制台。界面只调用既有核心引擎，不重写规则或赔率。
-- `baccarat-test.js`：V0.2 规则矩阵与 10,000 局随机运行测试。
-- `betting-test.js`：V0.3 确定性结算与 10,000 局集成稳定性测试。
-- `simulator-test.js`：V0.4 种子可复现性和模拟结构测试。
-- `app-test.js`：V0.5 游戏控制器、限额与连续 100 局测试。
-
-`playRound(shoe, { debug: true })` 可开启单局调试日志。`placeBet` 会即时扣除余额，只有在 `BETTING_OPEN` 状态允许下注；`settleRound` 必须先关闭下注，且同一局只能结算一次。
-
-模拟器通过 V0.2 的 `playRound` 真实发牌，并用 V0.3 的纯 `settleBet` 为每种投注逐局按 1 单位结算。它在每局开始前、剩余牌少于 60 张时重洗；不会在牌局中途更换 Shoe。
-
-使用浏览器打开 `index.html` 即可游玩。初始余额为 100,000；筹码为 10 / 50 / 100 / 500 / 1,000 / 5,000；单区限额 10–20,000，单局总限额 50,000。点击 DEAL 后，桌面将显示队列驱动的 NEXT CARD 提示，逐张发牌；路纸目前仅为可展开/收起的布局占位，尚未实现任何路纸算法。
+- `baccarat-engine.js`：8 副 Shoe、洗牌、发牌、点数、Natural、补牌、Pair 和胜负。
+- `betting-engine.js`：余额、下注、赔率、Tie Push、Pair 结算及重复结算保护。
+- `baccarat-simulator.js`：真实 Shoe 的 RTP / House Edge 模拟。
+- `app.js`：Casino Table、发牌/翻牌/弃牌表现层、Manual / Auto Reveal、Road History 生命周期与 Roadmap UI。
+- `roadmap-test.js`：Roadmap Core 的 20+ 算法测试，包括 Tie、Leading Tie、Dragon Tail、碰撞与 500 局稳定性。
+- `roadmap-layout-test.js`：Roadmap 上下顺序、6 行、独立横滚、Compact/Mobile、筹码与控制台响应式约束。

@@ -3,7 +3,8 @@
 (function initializeApp(root) {
   const baccarat = root.BaccaratEngine || (typeof require !== "undefined" ? require("./baccarat-engine") : null);
   const betting = root.BettingEngine || (typeof require !== "undefined" ? require("./betting-engine") : null);
-  if (!baccarat || !betting) throw new Error("Baccarat and betting engines must be loaded before app.js");
+  const roadmapEngine = root.RoadmapEngine || (typeof require !== "undefined" ? require("./roadmap-engine") : null);
+  if (!baccarat || !betting || !roadmapEngine) throw new Error("Baccarat, betting, and roadmap engines must be loaded before app.js");
 
   const INITIAL_BALANCE = 100000;
   const CHIP_VALUES = Object.freeze([10, 50, 100, 500, 1000, 5000]);
@@ -79,10 +80,28 @@
       this.autoRevealRunning = false;
       this.autoRevealInterval = autoRevealInterval;
       this.autoRevealStartDelay = autoRevealStartDelay;
+      this.roadHistory = [];
+      this.hasRecordedRoadForCurrentRound = false;
     }
 
     createShuffledShoe() {
       return baccarat.shuffleShoe(baccarat.createShoe(8), this.random);
+    }
+
+    resetRoadmapForNewShoe() {
+      this.roadHistory = [];
+      this.hasRecordedRoadForCurrentRound = false;
+      this.onRoadmapChange?.();
+    }
+
+    recordCurrentRoundRoad() {
+      if (this.hasRecordedRoadForCurrentRound || !this.roundResult || !this.settlement) return false;
+      const latest = this.roadHistory.at(-1);
+      if (latest && latest.shoeId !== this.shoeId) this.resetRoadmapForNewShoe();
+      this.roadHistory.push(roadmapEngine.createRoadHistoryEntry(this.roundResult, { shoeId: this.shoeId, roundId: this.roundId }));
+      this.hasRecordedRoadForCurrentRound = true;
+      this.onRoadmapChange?.();
+      return true;
     }
 
     get totalBet() {
@@ -156,6 +175,7 @@
       if (this.shoe.length < RESHUFFLE_THRESHOLD) {
         this.shoe = this.createShuffledShoe();
         this.shoeId += 1;
+        this.resetRoadmapForNewShoe();
         this.message = "重新洗牌";
       }
       try {
@@ -236,6 +256,7 @@
           this.state = GAME_STATES.SETTLING;
           await wait(160);
           this.settlement = betting.settleRound(this.account, this.bettingRound, this.roundResult);
+          this.recordCurrentRoundRoad();
           this.state = GAME_STATES.ROUND_END;
           this.message = `${this.roundResult.winner}${this.roundResult.winner === "TIE" ? "" : " WIN"} · 发牌完成`;
         } else {
@@ -296,6 +317,7 @@
       this.currentDealIndex = 0;
       this.revealedCards = { PLAYER: [], BANKER: [] };
       this.isDealInputLocked = false;
+      this.hasRecordedRoadForCurrentRound = false;
       this.state = GAME_STATES.BETTING;
       this.message = "PLACE YOUR BETS · 请下注";
       return true;
@@ -327,6 +349,7 @@
       playerCards: byId("player-cards"), bankerCards: byId("banker-cards"), playerScore: byId("player-score"), bankerScore: byId("banker-score"),
       result: byId("result"), pairResult: byId("pair-result"), nextCard: byId("next-card-label"), playerScoreLabel: byId("player-score-label"), bankerScoreLabel: byId("banker-score-label"), totalBet: byId("total-bet"), totalReturn: byId("total-return"), netResult: byId("net-result"),
       settlementDetails: byId("settlement-details"), undo: byId("undo"), clear: byId("clear"), deal: byId("deal"),
+      beadPlate: byId("bead-plate"), bigRoad: byId("big-road"), roadmapStats: byId("roadmap-stats"),
     };
     const roadmapToggle = byId("roadmap-toggle");
     const roadmap = document.querySelector(".roadmap");
@@ -347,6 +370,33 @@
       }
     }
 
+    function renderRoadmaps() {
+      if (!elements.beadPlate || !elements.bigRoad) return;
+      const beadCells = roadmapEngine.buildBeadPlate(game.roadHistory);
+      const bigRoad = roadmapEngine.buildBigRoad(game.roadHistory);
+      const renderCells = (container, cells, type) => {
+        const maxCol = Math.max(5, ...cells.map((cell) => cell.col));
+        container.style.setProperty("--road-cols", String(maxCol + 1));
+        container.innerHTML = cells.map((cell) => {
+          const isBead = type === "bead";
+          const label = cell.winner === "BANKER" ? "庄" : cell.winner === "PLAYER" ? "闲" : "和";
+          const markers = isBead ? `<i class="pair-marker banker-pair" aria-hidden="true" ${cell.bankerPair ? "" : "hidden"}></i><i class="pair-marker player-pair" aria-hidden="true" ${cell.playerPair ? "" : "hidden"}></i>` : "";
+          const tie = !isBead && cell.tieCount ? `<em class="big-road-tie">${cell.tieCount > 1 ? cell.tieCount : ""}</em>` : "";
+          return `<span class="road-cell ${isBead ? `bead-${cell.winner.toLowerCase()}` : `big-${cell.winner.toLowerCase()}`}" data-row="${cell.row}" data-col="${cell.col}" style="grid-row:${cell.row + 1};grid-column:${cell.col + 1}" title="${cell.winner}">${isBead ? label : ""}${markers}${tie}</span>`;
+        }).join("");
+      };
+      renderCells(elements.beadPlate, beadCells, "bead");
+      renderCells(elements.bigRoad, bigRoad.cells, "big");
+      for (const grid of [elements.beadPlate, elements.bigRoad]) {
+        const scroll = grid.closest(".road-scroll");
+        if (scroll) scroll.scrollLeft = scroll.scrollWidth;
+      }
+      if (elements.roadmapStats) {
+        const stats = roadmapEngine.getRoadmapStatistics(game.roadHistory);
+        elements.roadmapStats.textContent = `${stats.hands} HANDS · B ${stats.banker} · P ${stats.player} · T ${stats.tie}`;
+      }
+    }
+
     function render() {
       const isBetting = game.state === GAME_STATES.BETTING;
       elements.balance.textContent = formatMoney(game.account.balance);
@@ -356,6 +406,7 @@
       elements.remaining.textContent = game.shoe.length;
       elements.message.textContent = game.message;
       elements.totalBet.textContent = formatMoney(game.totalBet);
+      renderRoadmaps();
       for (const button of betButtons) {
         const type = button.dataset.betType;
         button.disabled = !isBetting;
@@ -399,6 +450,7 @@
       elements.settlementDetails.innerHTML = Object.values(game.settlement.settlements).map((item) => `<li>${BET_LABELS[item.betType]}: ${item.outcome} / Return ${formatMoney(item.returnAmount)}</li>`).join("");
     }
     game.onStateChange = render;
+    game.onRoadmapChange = renderRoadmaps;
     chipButtons.forEach((button) => button.addEventListener("click", () => { game.selectChip(Number(button.dataset.chip)); render(); }));
     revealModeButtons.forEach((button) => button.addEventListener("click", () => { game.setRevealMode(button.dataset.revealMode); render(); }));
     betButtons.forEach((button) => button.addEventListener("click", () => { game.placeSelectedBet(button.dataset.betType); render(); }));
