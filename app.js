@@ -28,6 +28,9 @@
   const CUT_CARD_HOLD_MS = 2000;
   const CUT_CARD_EXIT_MS = 400;
   const CUT_CARD_EVENT_MS = CUT_CARD_ENTER_MS + CUT_CARD_HOLD_MS + CUT_CARD_EXIT_MS;
+  const CHIP_PLACEMENT_DURATION_MS = 220;
+  const CHIP_RETURN_DURATION_MS = 220;
+  const CHIP_CLEAR_RETURN_DURATION_MS = 240;
   const SHOE_STATUS = Object.freeze({ IN_PLAY: "IN_PLAY", CUT_REACHED: "CUT_REACHED", LAST_HAND_NEXT: "LAST_HAND_NEXT", LAST_HAND: "LAST_HAND", COMPLETE: "COMPLETE" });
   const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
@@ -159,9 +162,10 @@
     return denomination === 1000 ? "1k" : denomination === 5000 ? "5k" : String(denomination);
   }
 
-  function betChipHtml(denomination) {
+  function betChipHtml(denomination, stackIndex = null, extraClass = "") {
     const chipClass = getChipDenominationClass(denomination);
-    return `<span class="bet-chip bet-chip--${chipClass}" aria-hidden="true"><span class="bet-chip__spots"></span><span class="bet-chip__inner"><span class="bet-chip__value">${denomination}</span></span></span>`;
+    const stackAttribute = stackIndex === null ? "" : ` data-stack-index="${stackIndex}"`;
+    return `<span class="bet-chip bet-chip--${chipClass}${extraClass}" data-denomination="${denomination}"${stackAttribute} aria-hidden="true"><span class="bet-chip__spots"></span><span class="bet-chip__inner"><span class="bet-chip__value">${denomination}</span></span></span>`;
   }
 
   class BaccaratGameController {
@@ -673,7 +677,7 @@
       balance: byId("balance"), round: byId("round"), shoe: byId("shoe-id"), state: byId("game-state"), remaining: byId("remaining"), message: byId("message"),
       playerCards: byId("player-cards"), bankerCards: byId("banker-cards"), playerScore: byId("player-score"), bankerScore: byId("banker-score"),
       result: byId("result"), pairResult: byId("pair-result"), nextCard: byId("next-card-label"), playerScoreLabel: byId("player-score-label"), bankerScoreLabel: byId("banker-score-label"), totalBet: byId("total-bet"), totalReturn: byId("total-return"), netResult: byId("net-result"),
-      settlementDetails: byId("settlement-details"), undo: byId("undo"), clear: byId("clear"), deal: byId("deal"), repeat: byId("repeat-bet"), burnCard: byId("burn-card"), burnCardFace: byId("burn-card-face"), burnRank: byId("burn-card-rank"), burnCenter: byId("burn-card-center"), burnValue: byId("burn-card-value"), shoeStatus: byId("shoe-status"), cutCardPresentation: byId("cut-card-presentation"), cutCardEvent: byId("cut-card-event"), shoeVisual: document.querySelector(".shoe-visual"), visualCutCard: byId("visual-cut-card"),
+      settlementDetails: byId("settlement-details"), undo: byId("undo"), clear: byId("clear"), deal: byId("deal"), repeat: byId("repeat-bet"), burnCard: byId("burn-card"), burnCardFace: byId("burn-card-face"), burnRank: byId("burn-card-rank"), burnCenter: byId("burn-card-center"), burnValue: byId("burn-card-value"), shoeStatus: byId("shoe-status"), cutCardPresentation: byId("cut-card-presentation"), cutCardEvent: byId("cut-card-event"), shoeVisual: document.querySelector(".shoe-visual"), visualCutCard: byId("visual-cut-card"), chipAnimationLayer: byId("chip-animation-layer"),
       beadPlate: byId("bead-plate"), bigRoad: byId("big-road"), bigEyeBoy: byId("big-eye-boy"), smallRoad: byId("small-road"), cockroachPig: byId("cockroach-pig"), roadmapStats: byId("roadmap-stats"),
     };
     const roadmapToggle = byId("roadmap-toggle");
@@ -723,6 +727,83 @@
     const chipButtons = [...document.querySelectorAll("[data-chip]")];
     for (const chip of chipButtons) {
       if (!chip.querySelector(".chip__spots")) chip.insertAdjacentHTML("afterbegin", '<span class="chip__spots" aria-hidden="true"></span>');
+    }
+    const pendingBetChipArrivals = new Set();
+    const activeChipMovements = new Map();
+    let nextChipMovementId = 0;
+    let clearAnimationLocked = false;
+
+    const isReducedMotion = () => Boolean(root.matchMedia && root.matchMedia("(prefers-reduced-motion: reduce)").matches);
+    const chipMovementKey = (area, denomination, stackIndex) => `${area}:${denomination}:${stackIndex}`;
+    const isViewportRect = (rect) => rect && rect.width > 0 && rect.height > 0 && rect.right > 0 && rect.bottom > 0 && rect.left < root.innerWidth && rect.top < root.innerHeight;
+    function getChipSelectorRect(denomination) {
+      const selector = chipButtons.find((button) => Number(button.dataset.chip) === denomination);
+      return selector ? selector.getBoundingClientRect() : null;
+    }
+    function getBetChipTargetRect(area, denomination, stackIndex) {
+      const zone = betChipZones.get(area);
+      const chip = zone?.querySelector(`.bet-chip[data-denomination="${denomination}"][data-stack-index="${stackIndex}"]`);
+      return chip ? chip.getBoundingClientRect() : null;
+    }
+    function createChipMovementGhost(denomination, fromRect) {
+      const layer = elements.chipAnimationLayer;
+      if (!layer) return null;
+      const chipClass = getChipDenominationClass(denomination);
+      const ghost = document.createElement("span");
+      ghost.className = `chip-movement-ghost chip--${chipClass}`;
+      ghost.setAttribute("aria-hidden", "true");
+      ghost.innerHTML = `<span class="chip__spots"></span><span class="chip__inner"><span class="chip__value">${denomination}</span></span>`;
+      ghost.style.left = `${fromRect.left}px`;
+      ghost.style.top = `${fromRect.top}px`;
+      ghost.style.width = `${fromRect.width}px`;
+      ghost.style.height = `${fromRect.height}px`;
+      layer.append(ghost);
+      return ghost;
+    }
+    function finishChipMovement(movementId, ghost, onFinish) {
+      activeChipMovements.delete(movementId);
+      ghost?.remove();
+      onFinish?.();
+    }
+    function animateChipMovement({ denomination, fromRect, toRect, duration, onFinish }) {
+      if (isReducedMotion() || !isViewportRect(fromRect) || !isViewportRect(toRect)) { onFinish?.(); return null; }
+      const ghost = createChipMovementGhost(denomination, fromRect);
+      if (!ghost) { onFinish?.(); return null; }
+      const movementId = ++nextChipMovementId;
+      const deltaX = toRect.left + toRect.width / 2 - (fromRect.left + fromRect.width / 2);
+      const deltaY = toRect.top + toRect.height / 2 - (fromRect.top + fromRect.height / 2);
+      const scale = Math.min(1.15, Math.max(.35, Math.min(toRect.width / fromRect.width, toRect.height / fromRect.height)));
+      activeChipMovements.set(movementId, ghost);
+      const finish = () => finishChipMovement(movementId, ghost, onFinish);
+      try {
+        if (ghost.animate) {
+          ghost.animate([
+            { transform: "translate(0, 0) scale(1)", opacity: 1 },
+            { transform: `translate(${deltaX}px, ${deltaY}px) scale(${scale})`, opacity: 1 }
+          ], { duration, easing: "cubic-bezier(.2, .7, .3, 1)", fill: "forwards" }).finished.then(finish, finish);
+        } else setTimeout(finish, duration);
+      } catch (error) { finish(); }
+      return movementId;
+    }
+    function animateChipPlacement(area, denomination, stackIndex) {
+      const key = chipMovementKey(area, denomination, stackIndex);
+      const measure = () => {
+        const fromRect = getChipSelectorRect(denomination);
+        const toRect = getBetChipTargetRect(area, denomination, stackIndex);
+        animateChipMovement({ denomination, fromRect, toRect, duration: CHIP_PLACEMENT_DURATION_MS, onFinish: () => {
+          pendingBetChipArrivals.delete(key);
+          renderBetChipStacks();
+        } });
+      };
+      if (typeof root.requestAnimationFrame === "function") root.requestAnimationFrame(measure); else setTimeout(measure, 0);
+    }
+    function animateChipReturn(denomination, fromRect, duration = CHIP_RETURN_DURATION_MS) {
+      animateChipMovement({ denomination, fromRect, toRect: getChipSelectorRect(denomination), duration });
+    }
+    function cancelPendingChipArrivals() {
+      pendingBetChipArrivals.clear();
+      for (const ghost of activeChipMovements.values()) ghost.remove();
+      activeChipMovements.clear();
     }
     const revealModeButtons = [...document.querySelectorAll("[data-reveal-mode]")];
     function initializeCardSlots(container, side) {
@@ -781,8 +862,14 @@
         const columns = buildBetChipColumns(game.betChipPresentation, betType);
         zone.innerHTML = columns.map(({ denomination, chips }) => {
           const visibleChips = chips.slice(-BET_CHIP_RENDER_CAP);
+          const firstVisibleStackIndex = chips.length - visibleChips.length;
           const dense = visibleChips.length > 4 ? " is-dense" : "";
-          return `<span class="bet-chip-column${dense}" data-denomination="${denomination}">${visibleChips.map((chip) => betChipHtml(chip)).join("")}</span>`;
+          const chipMarkup = visibleChips.map((chip, visibleIndex) => {
+            const stackIndex = firstVisibleStackIndex + visibleIndex;
+            const pending = pendingBetChipArrivals.has(chipMovementKey(betType, denomination, stackIndex)) ? " is-arrival-pending" : "";
+            return betChipHtml(chip, stackIndex, pending);
+          }).join("");
+          return `<span class="bet-chip-column${dense}" data-denomination="${denomination}">${chipMarkup}</span>`;
         }).join("");
       }
     }
@@ -865,12 +952,47 @@
         styles: getChipComputedStyleSnapshot(selected)
       });
     }
+    function getLastPlacementSnapshot() {
+      const action = game.betActionHistory[game.betActionHistory.length - 1];
+      if (!action || action.type === "SNAPSHOT") return null;
+      const stackIndex = (game.betChipPresentation[action.betType] || []).filter((denomination) => denomination === action.amount).length - 1;
+      return { area: action.betType, denomination: action.amount, stackIndex, fromRect: getBetChipTargetRect(action.betType, action.amount, stackIndex) };
+    }
+    function getVisibleBetChipSnapshots() {
+      return [...document.querySelectorAll(".bet-chip-stack-zone .bet-chip")].map((chip) => ({
+        denomination: Number(chip.dataset.denomination),
+        fromRect: chip.getBoundingClientRect()
+      })).filter((item) => isViewportRect(item.fromRect));
+    }
     chipButtons.forEach((button) => button.addEventListener("click", () => { game.selectChip(Number(button.dataset.chip)); render(); debugChipPresentation(); }));
-    if (elements.repeat) elements.repeat.addEventListener("click", () => { game.repeatLastBet(); render(); });
+    if (elements.repeat) elements.repeat.addEventListener("click", () => { if (game.repeatLastBet()) cancelPendingChipArrivals(); render(); });
     revealModeButtons.forEach((button) => button.addEventListener("click", () => { game.setRevealMode(button.dataset.revealMode); render(); }));
-    betButtons.forEach((button) => button.addEventListener("click", () => { game.placeSelectedBet(button.dataset.betType); render(); }));
-    elements.undo.addEventListener("click", () => { game.undoBet(); render(); });
-    elements.clear.addEventListener("click", () => { game.clearBets(); render(); });
+    betButtons.forEach((button) => button.addEventListener("click", () => {
+      const area = button.dataset.betType;
+      const denomination = game.selectedChip;
+      if (!game.placeSelectedBet(area)) { render(); return; }
+      const stackIndex = (game.betChipPresentation[area] || []).filter((value) => value === denomination).length - 1;
+      pendingBetChipArrivals.add(chipMovementKey(area, denomination, stackIndex));
+      render();
+      animateChipPlacement(area, denomination, stackIndex);
+    }));
+    elements.undo.addEventListener("click", () => {
+      const movement = getLastPlacementSnapshot();
+      if (!game.undoBet()) { render(); return; }
+      render();
+      if (movement) animateChipReturn(movement.denomination, movement.fromRect);
+    });
+    elements.clear.addEventListener("click", () => {
+      if (clearAnimationLocked) return;
+      const movements = getVisibleBetChipSnapshots();
+      if (!game.clearBets()) { render(); return; }
+      render();
+      if (!movements.length || isReducedMotion()) return;
+      clearAnimationLocked = true;
+      elements.clear.disabled = true;
+      movements.forEach((movement) => animateChipReturn(movement.denomination, movement.fromRect, CHIP_CLEAR_RETURN_DURATION_MS));
+      setTimeout(() => { clearAnimationLocked = false; render(); }, CHIP_CLEAR_RETURN_DURATION_MS);
+    });
     function getTargetSlotRect(item) {
       const container = item.side === "PLAYER" ? elements.playerCards : elements.bankerCards;
       const slot = container.querySelector(`[data-slot-index="${item.cardIndex}"]`);
@@ -958,7 +1080,7 @@
     const third = index === 2 ? " third-card is-third-card" : "";
     return `<span class="card-shell${third}" data-card-key="${key}" data-card-position="${index + 1}" data-reveal-state="${revealed ? "FACE_UP" : "FACE_DOWN"}"><span class="card-inner${revealed ? " is-face-up" : " is-face-down"}">${playingCardBackHtml()}<span class="card-face card-front playing-card--front ${color}"><span class="playing-card__corner playing-card__corner--top"><strong>${card.rank}</strong></span><span class="playing-card__center">${symbol}</span><span class="playing-card__corner playing-card__corner--bottom"><strong>${card.rank}</strong></span></span></span></span>`;
   }
-  const api = { INITIAL_BALANCE, CHIP_VALUES, DEFAULT_CHIP, AREA_MIN_BET, AREA_MAX_BET, ROUND_MAX_BET, BET_CHIP_RENDER_CAP, MIN_CUT_REMAINING, MAX_CUT_REMAINING, GAME_STATES, SHOE_STATUS, CUT_CARD_ENTER_MS, CUT_CARD_HOLD_MS, CUT_CARD_EXIT_MS, CUT_CARD_EVENT_MS, formatMoney, getBurnValue, createBurnState, createCutCardState, createBetChipPresentation, cloneBetChipPresentation, buildBetChipColumns, getChipDenominationClass, betChipHtml, randomInteger, getShoePresentationState, getShoeEquipmentState, renderBurnPresentation, renderShoeStatus, playingCardBackHtml, flipCardHtml, buildDealQueue, getDealDuration, getDiscardSequence, getChipComputedStyleSnapshot, BaccaratGameController, mountGame };
+  const api = { INITIAL_BALANCE, CHIP_VALUES, DEFAULT_CHIP, AREA_MIN_BET, AREA_MAX_BET, ROUND_MAX_BET, BET_CHIP_RENDER_CAP, MIN_CUT_REMAINING, MAX_CUT_REMAINING, GAME_STATES, SHOE_STATUS, CUT_CARD_ENTER_MS, CUT_CARD_HOLD_MS, CUT_CARD_EXIT_MS, CUT_CARD_EVENT_MS, CHIP_PLACEMENT_DURATION_MS, CHIP_RETURN_DURATION_MS, CHIP_CLEAR_RETURN_DURATION_MS, formatMoney, getBurnValue, createBurnState, createCutCardState, createBetChipPresentation, cloneBetChipPresentation, buildBetChipColumns, getChipDenominationClass, betChipHtml, randomInteger, getShoePresentationState, getShoeEquipmentState, renderBurnPresentation, renderShoeStatus, playingCardBackHtml, flipCardHtml, buildDealQueue, getDealDuration, getDiscardSequence, getChipComputedStyleSnapshot, BaccaratGameController, mountGame };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.BaccaratApp = api;
   if (typeof window !== "undefined" && window.document) window.addEventListener("DOMContentLoaded", () => mountGame(window.document));

@@ -19,7 +19,7 @@ test("Six chip denominations retain their correct display labels and numeric val
   }
 });
 test("Each chip has an explicit denomination class rather than positional styling", () => {
-  for (const name of ["10", "50", "100", "500", "1k", "5k"]) assert.match(css, new RegExp(`\\.chips \\.chip--${name} \\{`));
+  for (const name of ["10", "50", "100", "500", "1k", "5k"]) assert.match(css, new RegExp(`\\.chips \\.chip--${name}(?:, \\.chip-movement-ghost\\.chip--${name})? \\{`));
   assert.doesNotMatch(css, /\.chips button:nth-child/);
 });
 test("Casino edge spots use eight clear accent segments without a mask", () => {
@@ -35,9 +35,9 @@ test("Every runtime chip receives a dedicated spots layer beneath its ivory cent
 });
 test("Every chip has a larger ivory center and high denominations remain color-separated", () => {
   assert.match(css, /\.chips \.chip__inner[\s\S]*?width: 70%;[\s\S]*?height: 70%;[\s\S]*?#efe6d2/);
-  assert.match(css, /\.chip--500 \{ --chip-main: #252728/);
-  assert.match(css, /\.chip--1k \{ --chip-main: #5a2f8d/);
-  assert.match(css, /\.chip--5k \{ --chip-main: #1b4f9a/);
+  assert.match(css, /\.chip--500(?:, \.chip-movement-ghost\.chip--500)? \{ --chip-main: #252728/);
+  assert.match(css, /\.chip--1k(?:, \.chip-movement-ghost\.chip--1k)? \{ --chip-main: #5a2f8d/);
+  assert.match(css, /\.chip--5k(?:, \.chip-movement-ghost\.chip--5k)? \{ --chip-main: #1b4f9a/);
 });
 test("Chip labels contain denominations only, without branding or currency", () => {
   const chips = [...html.matchAll(/<button class="chip[\s\S]*?<\/button>/g)].map((match) => match[0]);
@@ -75,9 +75,9 @@ test("Selected halo sits outside the chip without replacing its denomination col
   assert.doesNotMatch(selectedRule, /(?:border|background)(?:-color)?:/);
   assert.match(css, /\.chips \.chip\.selected::after[\s\S]*?inset: -4px;[\s\S]*?border: 1px solid rgba\(247, 233, 194, \.9\);[\s\S]*?pointer-events: none/);
   assert.match(css, /\.chips \.chip\[data-chip\] \{[\s\S]*?border: 1px solid[\s\S]*?background: radial-gradient/);
-  assert.match(css, /\.chips \.chip--500 \{ --chip-main: #252728/);
-  assert.match(css, /\.chips \.chip--1k \{ --chip-main: #5a2f8d/);
-  assert.match(css, /\.chips \.chip--5k \{ --chip-main: #1b4f9a/);
+  assert.match(css, /\.chips \.chip--500, \.chip-movement-ghost\.chip--500 \{ --chip-main: #252728/);
+  assert.match(css, /\.chips \.chip--1k, \.chip-movement-ghost\.chip--1k \{ --chip-main: #5a2f8d/);
+  assert.match(css, /\.chips \.chip--5k, \.chip-movement-ghost\.chip--5k \{ --chip-main: #1b4f9a/);
 });
 test("Computed-style debug snapshot reports spots, inner label, and external halo layers", () => {
   const spots = {}; const inner = {};

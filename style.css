@@ -228,12 +228,12 @@ button { font: inherit; color: inherit; cursor: pointer; } button:disabled { cur
   box-shadow: inset 0 1px 2px #fff, inset 0 -1px 2px #9a896522;
 }
 .chips .chip__value { position: relative; z-index: 3; color: var(--chip-text); font: 700 .72rem/1 Georgia, "Times New Roman", serif; letter-spacing: -.04em; text-shadow: 0 1px #fff8; }
-.chips .chip--10 { --chip-main: #ded5c2; --chip-accent: #b49350; --chip-spot: #28302b; --chip-text: #252724; }
-.chips .chip--50 { --chip-main: #6a1f2d; --chip-accent: #eadfca; --chip-spot: #f4ecdc; --chip-text: #6a1f2d; }
-.chips .chip--100 { --chip-main: #126247; --chip-accent: #cdb77b; --chip-spot: #f5eedc; --chip-text: #126247; }
-.chips .chip--500 { --chip-main: #252728; --chip-accent: #d9bd7d; --chip-spot: #eee4cf; --chip-text: #252728; }
-.chips .chip--1k { --chip-main: #5a2f8d; --chip-accent: #d9bc78; --chip-spot: #dfc987; --chip-text: #5a2f8d; }
-.chips .chip--5k { --chip-main: #1b4f9a; --chip-accent: #d5af58; --chip-spot: #e4c877; --chip-text: #1b4f9a; }
+.chips .chip--10, .chip-movement-ghost.chip--10 { --chip-main: #ded5c2; --chip-accent: #b49350; --chip-spot: #28302b; --chip-text: #252724; }
+.chips .chip--50, .chip-movement-ghost.chip--50 { --chip-main: #6a1f2d; --chip-accent: #eadfca; --chip-spot: #f4ecdc; --chip-text: #6a1f2d; }
+.chips .chip--100, .chip-movement-ghost.chip--100 { --chip-main: #126247; --chip-accent: #cdb77b; --chip-spot: #f5eedc; --chip-text: #126247; }
+.chips .chip--500, .chip-movement-ghost.chip--500 { --chip-main: #252728; --chip-accent: #d9bd7d; --chip-spot: #eee4cf; --chip-text: #252728; }
+.chips .chip--1k, .chip-movement-ghost.chip--1k { --chip-main: #5a2f8d; --chip-accent: #d9bc78; --chip-spot: #dfc987; --chip-text: #5a2f8d; }
+.chips .chip--5k, .chip-movement-ghost.chip--5k { --chip-main: #1b4f9a; --chip-accent: #d5af58; --chip-spot: #e4c877; --chip-text: #1b4f9a; }
 .chips .chip--1k .chip__value, .chips .chip--5k .chip__value { font-size: .62rem; letter-spacing: -.07em; }
 .chips .chip:hover:not(:disabled) { filter: brightness(1.07); transform: translateY(-1px) scale(1.01); }
 .chips .chip.selected {
@@ -253,6 +253,14 @@ button { font: inherit; color: inherit; cursor: pointer; } button:disabled { cur
 .chips .chip:active:not(:disabled) { transform: translateY(1px) scale(.96); }
 .chips .chip:focus-visible { outline: 1px solid #f7e9c2; outline-offset: 3px; }
 .chips .chip:disabled { filter: saturate(.45); opacity: .48; }
+
+/* V0.8.1 — fixed overlay ghosts use the same chip tokens without moving live controls. */
+#chip-animation-layer { position: fixed; z-index: 80; inset: 0; overflow: hidden; pointer-events: none; }
+.chip-movement-ghost { position: fixed; z-index: 1; display: grid; place-items: center; box-sizing: border-box; border: 1px solid color-mix(in srgb, var(--chip-accent) 72%, #21180e); border-radius: 50%; background: radial-gradient(circle at 37% 30%, color-mix(in srgb, var(--chip-main) 84%, #fff), var(--chip-main) 70%); box-shadow: 0 3px 0 color-mix(in srgb, var(--chip-main) 68%, #090807), 0 5px 10px #0008, inset 0 1px 1px #fff3; pointer-events: none; transform-origin: center; }
+.chip-movement-ghost .chip__spots { position: absolute; z-index: 1; inset: 1px; border-radius: inherit; background: conic-gradient(from 8deg, var(--chip-spot) 0deg 12deg, transparent 12deg 45deg, var(--chip-spot) 45deg 57deg, transparent 57deg 90deg, var(--chip-spot) 90deg 102deg, transparent 102deg 135deg, var(--chip-spot) 135deg 147deg, transparent 147deg 180deg, var(--chip-spot) 180deg 192deg, transparent 192deg 225deg, var(--chip-spot) 225deg 237deg, transparent 237deg 270deg, var(--chip-spot) 270deg 282deg, transparent 282deg 315deg, var(--chip-spot) 315deg 327deg, transparent 327deg 360deg); }
+.chip-movement-ghost .chip__inner { position: relative; z-index: 2; display: grid; width: 70%; height: 70%; place-items: center; border: 1px solid color-mix(in srgb, var(--chip-accent) 70%, transparent); border-radius: 50%; background: radial-gradient(circle at 38% 30%, #f8f2e7, #efe6d2 72%); box-shadow: inset 0 1px 2px #fff, inset 0 -1px 2px #9a896522; }
+.chip-movement-ghost .chip__value { position: relative; z-index: 3; color: var(--chip-text); font: 700 .72rem/1 Georgia, "Times New Roman", serif; letter-spacing: -.04em; text-shadow: 0 1px #fff8; white-space: nowrap; }
+.chip-movement-ghost.chip--1k .chip__value, .chip-movement-ghost.chip--5k .chip__value { font-size: .62rem; letter-spacing: -.07em; }
 
 /* V0.8.0 — presentation-only table chips. They share the V0.7.7 ceramic tokens, never betting interaction. */
 .bet-area {
@@ -310,6 +318,7 @@ button { font: inherit; color: inherit; cursor: pointer; } button:disabled { cur
 .bet-chip__spots { position: absolute; z-index: 1; inset: .6px; border-radius: inherit; background: conic-gradient(from 8deg, var(--chip-spot) 0deg 12deg, transparent 12deg 45deg, var(--chip-spot) 45deg 57deg, transparent 57deg 90deg, var(--chip-spot) 90deg 102deg, transparent 102deg 135deg, var(--chip-spot) 135deg 147deg, transparent 147deg 180deg, var(--chip-spot) 180deg 192deg, transparent 192deg 225deg, var(--chip-spot) 225deg 237deg, transparent 237deg 270deg, var(--chip-spot) 270deg 282deg, transparent 282deg 315deg, var(--chip-spot) 315deg 327deg, transparent 327deg 360deg); }
 .bet-chip__inner { position: relative; z-index: 2; display: grid; width: 70%; height: 70%; place-items: center; border: 1px solid color-mix(in srgb, var(--chip-accent) 70%, transparent); border-radius: 50%; background: radial-gradient(circle at 38% 30%, #f8f2e7, #efe6d2 72%); }
 .bet-chip__value { position: relative; z-index: 3; color: var(--chip-text); font-family: Georgia, "Times New Roman", serif; font-weight: 700; line-height: 1; letter-spacing: -.04em; white-space: nowrap; text-align: center; text-shadow: 0 1px #fff8; }
+.bet-chip.is-arrival-pending { visibility: hidden; }
 /* Table chips are substantially smaller than the selector chips: size the label by digit count. */
 .bet-chip--10 .bet-chip__value, .bet-chip--50 .bet-chip__value { font-size: 10px; }
 .bet-chip--100 .bet-chip__value, .bet-chip--500 .bet-chip__value { font-size: 8px; }
