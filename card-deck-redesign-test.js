@@ -53,12 +53,26 @@ test("Back uses burgundy, dual gold borders, and symmetric geometric pattern", (
   assert.match(css, /playing-card--back::before,[\s\S]*?playing-card--back::after/);
   assert.match(css, /playing-card__back-pattern/);
 });
+test("Front and back faces are explicitly isolated for WebKit 3D compositing", () => {
+  assert.match(css, /\.card-face \{[\s\S]*?-webkit-backface-visibility: hidden;[\s\S]*?backface-visibility: hidden;/);
+  assert.match(css, /\.card-shell \{ -webkit-perspective: 620px; \}/);
+  assert.match(css, /\.card-inner \{ -webkit-transform-style: preserve-3d; \}/);
+  assert.match(css, /\.card-inner\.is-face-up:not\(\.is-flipping\) \.playing-card--back \{ visibility: hidden; \}/);
+  assert.match(css, /\.card-inner\.is-face-down:not\(\.is-flipping\) \.playing-card--front \{ visibility: hidden; \}/);
+});
+test("Face-specific defensive rules never allow back crown or pattern on a front", () => {
+  assert.match(css, /\.playing-card--front \.playing-card__back-crown,[\s\S]*?\.playing-card--front \.playing-card__back-pattern \{ display: none !important; \}/);
+  assert.match(css, /\.playing-card--back \.playing-card__corner,[\s\S]*?\.playing-card--back \.playing-card__center \{ display: none !important; \}/);
+  const frontOnly = app.flipCardHtml({ rank: "K", suit: "spades" }, 0, true).match(/<span class="card-face card-front[\s\S]*?<\/span><\/span><\/span>$/)[0];
+  assert.doesNotMatch(frontOnly, /playing-card__back-crown|playing-card__back-pattern/);
+});
 test("Burn presentation uses the premium card-face system", () => {
   assert.match(html, /id="burn-card-face" class="burn-card__face playing-card--front/);
   assert.match(html, /id="burn-card-center" class="playing-card__center"/);
   assert.match(source, /elements\.burnCardFace\.className = `burn-card__face playing-card--front/);
   assert.match(source, /elements\.burnRank\.textContent = burn\.revealedCard\.rank/);
   assert.match(source, /elements\.burnCenter\.textContent = symbol/);
+  assert.doesNotMatch(html.match(/<div id="burn-card-face"[\s\S]*?<\/div>/)[0], /playing-card__back-crown|playing-card__back-pattern/);
 });
 test("Discard clones and Shoe card stack retain compatibility", () => {
   assert.match(source, /cloneNode\(true\)/);
@@ -75,6 +89,12 @@ test("Card redesign preserves existing slots, third-card angle, and chip UI isol
   assert.match(css, /\.card-slots \{ position: relative; width: 210px; height: 100px; \}/);
   assert.match(css, /\.is-third-card \{ transform: translateY\(5px\) rotate\(-6deg\)/);
   assert.doesNotMatch(source, /selectedChip\s*=\s*["']REPEAT/);
+});
+test("Third-card fronts, discard fronts, and Shoe backs retain their intended face-only content", () => {
+  const third = app.flipCardHtml({ rank: "Q", suit: "diamonds" }, 2, true);
+  assert.match(third, /is-third-card/);
+  assert.match(css, /\.discard-clone \.playing-card--front/);
+  assert.match(app.playingCardBackHtml(), /playing-card__back-crown/);
 });
 
 console.log(`\nTEST SUMMARY: Passed: ${passed}; Failed: ${failed}`);

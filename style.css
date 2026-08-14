@@ -113,6 +113,24 @@ button { font: inherit; color: inherit; cursor: pointer; } button:disabled { cur
 .flying-card { overflow: hidden; border: 0; border-radius: 7px; background: transparent; box-shadow: 1px 4px 9px #0009; }
 .flying-card .card-back { position: absolute; inset: 0; }
 .discard-clone .playing-card--front { box-shadow: 1px 4px 9px #0009; }
+.card-shell { -webkit-perspective: 620px; }
+.card-inner { -webkit-transform-style: preserve-3d; }
+.card-inner.is-face-down { -webkit-transform: rotateY(0deg); }
+.card-inner.is-face-up { -webkit-transform: rotateY(180deg); }
+.card-face {
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+}
+.card-back { -webkit-transform: rotateY(0deg) translateZ(0); transform: rotateY(0deg) translateZ(0); }
+.card-front { -webkit-transform: rotateY(180deg) translateZ(0); transform: rotateY(180deg) translateZ(0); }
+.card-inner.is-face-up:not(.is-flipping) .playing-card--back { visibility: hidden; }
+.card-inner.is-face-down:not(.is-flipping) .playing-card--front { visibility: hidden; }
+.playing-card--front .playing-card__back-crown,
+.playing-card--front .playing-card__back-pattern { display: none !important; }
+.playing-card--back .playing-card__corner,
+.playing-card--back .playing-card__center { display: none !important; }
 .shoe-stack {
   border-color: #c6a45f;
   background: repeating-linear-gradient(0deg, #f2e7cb 0 1px, #a18d69 1px 2px), linear-gradient(135deg, #701b2a, #3e0f1a);
