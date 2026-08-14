@@ -253,6 +253,76 @@ button { font: inherit; color: inherit; cursor: pointer; } button:disabled { cur
 .chips .chip:active:not(:disabled) { transform: translateY(1px) scale(.96); }
 .chips .chip:focus-visible { outline: 1px solid #f7e9c2; outline-offset: 3px; }
 .chips .chip:disabled { filter: saturate(.45); opacity: .48; }
+
+/* V0.8.0 — presentation-only table chips. They share the V0.7.7 ceramic tokens, never betting interaction. */
+.bet-area {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto auto auto minmax(64px, 1fr) auto;
+  align-items: start;
+  justify-items: center;
+  gap: 0;
+  min-height: 150px;
+  padding: 7px 6px;
+}
+.bet-area > b { grid-row: 1; }
+.bet-area > span:not(.bet-chip-stack-zone) { grid-row: 2; }
+.bet-area > em { grid-row: 3; }
+.bet-area > i { grid-row: 5; margin-top: 0; }
+.bet-area.pair-bet { grid-template-rows: auto auto auto minmax(50px, 1fr) auto; min-height: 112px; padding-top: 5px; }
+.pair-bet > b { font-size: .78rem; }
+.pair-bet > span:not(.bet-chip-stack-zone), .pair-bet > em { font-size: .62rem; }
+.bet-chip-stack-zone {
+  --bet-chip-size: 30px;
+  grid-row: 4;
+  display: flex;
+  align-self: stretch;
+  align-items: flex-start;
+  justify-content: center;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  gap: 6px;
+  pointer-events: none;
+}
+.pair-bet .bet-chip-stack-zone { --bet-chip-size: 24px; gap: 3px; }
+.bet-chip-column { --bet-chip-stack-step: 12px; display: flex; flex: 0 0 var(--bet-chip-size); flex-direction: column; align-items: center; min-width: 0; }
+.bet-chip-column.is-dense { --bet-chip-stack-step: 5px; }
+.bet-chip-column .bet-chip + .bet-chip { margin-top: calc(var(--bet-chip-stack-step, 12px) - var(--bet-chip-size)); }
+.bet-chip {
+  --chip-main: #2a2926;
+  --chip-accent: #d9c58e;
+  --chip-spot: #f4ecda;
+  --chip-text: #f7edd3;
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  width: var(--bet-chip-size);
+  height: var(--bet-chip-size);
+  flex: 0 0 var(--bet-chip-size);
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--chip-accent) 72%, #21180e);
+  border-radius: 50%;
+  background: radial-gradient(circle at 37% 30%, color-mix(in srgb, var(--chip-main) 84%, #fff), var(--chip-main) 70%);
+  box-shadow: 0 2px 0 color-mix(in srgb, var(--chip-main) 68%, #090807), 0 3px 6px #0007, inset 0 1px 1px #fff3;
+  pointer-events: none;
+}
+.bet-chip__spots { position: absolute; z-index: 1; inset: .6px; border-radius: inherit; background: conic-gradient(from 8deg, var(--chip-spot) 0deg 12deg, transparent 12deg 45deg, var(--chip-spot) 45deg 57deg, transparent 57deg 90deg, var(--chip-spot) 90deg 102deg, transparent 102deg 135deg, var(--chip-spot) 135deg 147deg, transparent 147deg 180deg, var(--chip-spot) 180deg 192deg, transparent 192deg 225deg, var(--chip-spot) 225deg 237deg, transparent 237deg 270deg, var(--chip-spot) 270deg 282deg, transparent 282deg 315deg, var(--chip-spot) 315deg 327deg, transparent 327deg 360deg); }
+.bet-chip__inner { position: relative; z-index: 2; display: grid; width: 70%; height: 70%; place-items: center; border: 1px solid color-mix(in srgb, var(--chip-accent) 70%, transparent); border-radius: 50%; background: radial-gradient(circle at 38% 30%, #f8f2e7, #efe6d2 72%); }
+.bet-chip__value { position: relative; z-index: 3; color: var(--chip-text); font-family: Georgia, "Times New Roman", serif; font-weight: 700; line-height: 1; letter-spacing: -.04em; white-space: nowrap; text-align: center; text-shadow: 0 1px #fff8; }
+/* Table chips are substantially smaller than the selector chips: size the label by digit count. */
+.bet-chip--10 .bet-chip__value, .bet-chip--50 .bet-chip__value { font-size: 10px; }
+.bet-chip--100 .bet-chip__value, .bet-chip--500 .bet-chip__value { font-size: 8px; }
+.bet-chip--1k .bet-chip__value, .bet-chip--5k .bet-chip__value { font-size: 6.5px; letter-spacing: -.07em; }
+.bet-chip--10 { --chip-main: #ded5c2; --chip-accent: #b49350; --chip-spot: #28302b; --chip-text: #252724; }
+.bet-chip--50 { --chip-main: #6a1f2d; --chip-accent: #eadfca; --chip-spot: #f4ecdc; --chip-text: #6a1f2d; }
+.bet-chip--100 { --chip-main: #126247; --chip-accent: #cdb77b; --chip-spot: #f5eedc; --chip-text: #126247; }
+.bet-chip--500 { --chip-main: #252728; --chip-accent: #d9bd7d; --chip-spot: #eee4cf; --chip-text: #252728; }
+.bet-chip--1k { --chip-main: #5a2f8d; --chip-accent: #d9bc78; --chip-spot: #dfc987; --chip-text: #5a2f8d; }
+.bet-chip--5k { --chip-main: #1b4f9a; --chip-accent: #d5af58; --chip-spot: #e4c877; --chip-text: #1b4f9a; }
+.pair-bet .bet-chip--10 .bet-chip__value, .pair-bet .bet-chip--50 .bet-chip__value { font-size: 8px; }
+.pair-bet .bet-chip--100 .bet-chip__value, .pair-bet .bet-chip--500 .bet-chip__value { font-size: 7px; }
+.pair-bet .bet-chip--1k .bet-chip__value, .pair-bet .bet-chip--5k .bet-chip__value { font-size: 6px; }
 @media (max-width: 760px) {
   .chips { display: grid; grid-template-columns: repeat(6, 38px); justify-content: center; max-width: none; gap: 5px; }
   .chips .chip { width: 38px; height: 38px; flex-basis: 38px; padding: 0; }
@@ -260,4 +330,16 @@ button { font: inherit; color: inherit; cursor: pointer; } button:disabled { cur
   .chips .chip__value { font-size: .58rem; }
   .chips .chip--1k .chip__value, .chips .chip--5k .chip__value { font-size: .52rem; }
   .chips .repeat-bet { grid-column: 1 / -1; width: 100%; min-height: 38px; }
+  .bet-area { grid-template-rows: auto auto auto minmax(53px, 1fr) auto; min-height: 130px; }
+  .bet-area.pair-bet { grid-template-rows: auto auto auto minmax(43px, 1fr) auto; min-height: 104px; }
+  .bet-chip-stack-zone { --bet-chip-size: 25px; gap: 3px; }
+  .pair-bet .bet-chip-stack-zone { --bet-chip-size: 22px; gap: 2px; }
+  .bet-chip-column { --bet-chip-stack-step: 9px; }
+  .bet-chip-column.is-dense { --bet-chip-stack-step: 4px; }
+  .bet-chip--10 .bet-chip__value, .bet-chip--50 .bet-chip__value { font-size: 8px; }
+  .bet-chip--100 .bet-chip__value, .bet-chip--500 .bet-chip__value { font-size: 7px; }
+  .bet-chip--1k .bet-chip__value, .bet-chip--5k .bet-chip__value { font-size: 6px; }
+  .pair-bet .bet-chip--10 .bet-chip__value, .pair-bet .bet-chip--50 .bet-chip__value { font-size: 7.5px; }
+  .pair-bet .bet-chip--100 .bet-chip__value, .pair-bet .bet-chip--500 .bet-chip__value { font-size: 6.5px; }
+  .pair-bet .bet-chip--1k .bet-chip__value, .pair-bet .bet-chip--5k .bet-chip__value { font-size: 5.5px; }
 }

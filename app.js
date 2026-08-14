@@ -133,6 +133,37 @@
     return "in-play";
   }
 
+  const BET_CHIP_RENDER_CAP = 8;
+
+  function createBetChipPresentation() {
+    return Object.fromEntries(Object.values(betting.BET_TYPES).map((type) => [type, []]));
+  }
+
+  function cloneBetChipPresentation(presentation) {
+    const clone = createBetChipPresentation();
+    for (const type of Object.values(betting.BET_TYPES)) clone[type] = [...(presentation?.[type] || [])];
+    return clone;
+  }
+
+  function buildBetChipColumns(presentation, betType) {
+    const order = [];
+    const stacks = new Map();
+    for (const denomination of presentation?.[betType] || []) {
+      if (!stacks.has(denomination)) { order.push(denomination); stacks.set(denomination, []); }
+      stacks.get(denomination).push(denomination);
+    }
+    return order.map((denomination) => ({ denomination, chips: stacks.get(denomination) }));
+  }
+
+  function getChipDenominationClass(denomination) {
+    return denomination === 1000 ? "1k" : denomination === 5000 ? "5k" : String(denomination);
+  }
+
+  function betChipHtml(denomination) {
+    const chipClass = getChipDenominationClass(denomination);
+    return `<span class="bet-chip bet-chip--${chipClass}" aria-hidden="true"><span class="bet-chip__spots"></span><span class="bet-chip__inner"><span class="bet-chip__value">${denomination}</span></span></span>`;
+  }
+
   class BaccaratGameController {
     constructor({ initialBalance = INITIAL_BALANCE, random = Math.random, autoRevealInterval = AUTO_REVEAL_INTERVAL_MS, autoRevealStartDelay = AUTO_REVEAL_START_DELAY_MS, debugForcedCutThreshold } = {}) {
       this.random = random;
@@ -151,6 +182,8 @@
       this.bettingRound = betting.createBettingRound(this.roundId, this.account);
       this.betActionHistory = [];
       this.lastConfirmedBetSnapshot = null;
+      this.betChipPresentation = createBetChipPresentation();
+      this.lastBetChipPresentation = null;
       this.roundResult = null;
       this.settlement = null;
       this.dealQueue = [];
@@ -216,6 +249,7 @@
       this.shoe = this.createShuffledShoe();
       this.shoeId += 1;
       this.resetRoadmapForNewShoe();
+      this.clearBetChipPresentation();
       this.cutCard = createCutCardState(this.random, debugForcedCutThreshold);
       this.cutEventRunId += 1;
       this.burnState = createBurnState();
@@ -271,6 +305,23 @@
 
     captureCurrentBetSnapshot() { return { ...this.bettingRound.bets }; }
 
+    recordBetChipPlacement(betType, denomination) {
+      if (!this.betChipPresentation[betType] || !CHIP_VALUES.includes(denomination)) return false;
+      this.betChipPresentation[betType].push(denomination);
+      return true;
+    }
+
+    undoLastBetChipPlacement(betType, denomination) {
+      const placements = this.betChipPresentation[betType];
+      if (!placements) return false;
+      const index = placements.lastIndexOf(denomination);
+      if (index < 0) return false;
+      placements.splice(index, 1);
+      return true;
+    }
+
+    clearBetChipPresentation() { this.betChipPresentation = createBetChipPresentation(); }
+
     getBetSnapshotTotal(snapshot) {
       return betting.roundMoney(Object.values(betting.BET_TYPES).reduce((sum, type) => sum + (snapshot?.[type] || 0), 0));
     }
@@ -289,9 +340,11 @@
       const snapshotTotal = this.getBetSnapshotTotal(snapshot);
       if (snapshotTotal > ROUND_MAX_BET || Object.values(betting.BET_TYPES).some((type) => snapshot[type] > AREA_MAX_BET)) return this.reject("Previous bet exceeds table limits");
       const beforeRepeat = this.captureCurrentBetSnapshot();
+      const beforePresentation = cloneBetChipPresentation(this.betChipPresentation);
       try {
         betting.replaceOpenBets(this.account, this.bettingRound, snapshot);
-        this.betActionHistory.push({ type: "SNAPSHOT", bets: beforeRepeat });
+        this.betActionHistory.push({ type: "SNAPSHOT", bets: beforeRepeat, presentation: beforePresentation });
+        this.betChipPresentation = cloneBetChipPresentation(this.lastBetChipPresentation);
         this.hideBurnPresentationAfterFirstBet();
         if (DEBUG_BURN_UI) console.log("[Burn UI] repeat success", { totalBet: this.totalBet, burnPresentationVisible: this.burnPresentationVisible });
         this.message = `REPEAT · ${formatMoney(snapshotTotal)}`;
@@ -335,6 +388,7 @@
       try {
         betting.placeBet(this.account, this.bettingRound, betType, this.selectedChip);
         this.betActionHistory.push({ betType, amount: this.selectedChip });
+        this.recordBetChipPlacement(betType, this.selectedChip);
         this.hideBurnPresentationAfterFirstBet();
         if (DEBUG_BURN_UI) console.log("[Burn UI] bet success", { totalBet: this.totalBet, burnPresentationVisible: this.burnPresentationVisible });
         this.message = `${BET_LABELS[betType]} +${formatMoney(this.selectedChip)}`;
@@ -349,12 +403,13 @@
       const action = this.betActionHistory.pop();
       if (!action) return this.reject("没有可撤销的下注");
       if (action.type === "SNAPSHOT") {
-        try { betting.replaceOpenBets(this.account, this.bettingRound, action.bets); this.message = "已撤销重复下注"; return true; }
+        try { betting.replaceOpenBets(this.account, this.bettingRound, action.bets); this.betChipPresentation = cloneBetChipPresentation(action.presentation); this.message = "已撤销重复下注"; return true; }
         catch (error) { this.betActionHistory.push(action); return this.reject(error.message); }
       }
       this.bettingRound.bets[action.betType] = betting.roundMoney(this.bettingRound.bets[action.betType] - action.amount);
       this.account.balance = betting.roundMoney(this.account.balance + action.amount);
       this.bettingRound.balanceAfterBet = this.account.balance;
+      this.undoLastBetChipPlacement(action.betType, action.amount);
       this.message = `已撤销 ${BET_LABELS[action.betType]} ${formatMoney(action.amount)}`;
       return true;
     }
@@ -366,6 +421,7 @@
       this.bettingRound.bets = betting.createEmptyBets();
       this.bettingRound.balanceAfterBet = this.account.balance;
       this.betActionHistory = [];
+      this.clearBetChipPresentation();
       this.message = refund ? `已退回 ${formatMoney(refund)}` : "当前没有下注";
       return true;
     }
@@ -383,6 +439,7 @@
       }
       betting.closeBetting(this.bettingRound);
       this.lastConfirmedBetSnapshot = this.captureCurrentBetSnapshot();
+      this.lastBetChipPresentation = cloneBetChipPresentation(this.betChipPresentation);
       this.currentRoundRevealMode = this.revealMode;
       this.isCurrentRoundLastHand = this.cutCard.lastHandPending;
       if (this.isCurrentRoundLastHand) {
@@ -525,6 +582,7 @@
       this.roundId += 1;
       this.bettingRound = betting.createBettingRound(this.roundId, this.account);
       this.betActionHistory = [];
+      this.clearBetChipPresentation();
       this.roundResult = null;
       this.settlement = null;
       this.dealQueue = [];
@@ -548,6 +606,7 @@
       this.roundId += 1;
       this.bettingRound = betting.createBettingRound(this.roundId, this.account);
       this.betActionHistory = [];
+      this.clearBetChipPresentation();
       this.roundResult = null;
       this.settlement = null;
       this.dealQueue = [];
@@ -652,6 +711,15 @@
     }
     const roadmap = document.querySelector(".roadmap");
     const betButtons = [...document.querySelectorAll("[data-bet-type]")];
+    const betChipZones = new Map();
+    for (const button of betButtons) {
+      const zone = document.createElement("span");
+      zone.className = "bet-chip-stack-zone";
+      zone.dataset.betArea = button.dataset.betType;
+      zone.setAttribute("aria-hidden", "true");
+      button.querySelector("i")?.before(zone);
+      betChipZones.set(button.dataset.betType, zone);
+    }
     const chipButtons = [...document.querySelectorAll("[data-chip]")];
     for (const chip of chipButtons) {
       if (!chip.querySelector(".chip__spots")) chip.insertAdjacentHTML("afterbegin", '<span class="chip__spots" aria-hidden="true"></span>');
@@ -708,6 +776,17 @@
       }
     }
 
+    function renderBetChipStacks() {
+      for (const [betType, zone] of betChipZones) {
+        const columns = buildBetChipColumns(game.betChipPresentation, betType);
+        zone.innerHTML = columns.map(({ denomination, chips }) => {
+          const visibleChips = chips.slice(-BET_CHIP_RENDER_CAP);
+          const dense = visibleChips.length > 4 ? " is-dense" : "";
+          return `<span class="bet-chip-column${dense}" data-denomination="${denomination}">${visibleChips.map((chip) => betChipHtml(chip)).join("")}</span>`;
+        }).join("");
+      }
+    }
+
     function render() {
       const isBetting = game.state === GAME_STATES.BETTING;
       elements.balance.textContent = formatMoney(game.account.balance);
@@ -721,6 +800,7 @@
       renderShoeEquipmentState();
       elements.totalBet.textContent = formatMoney(game.totalBet);
       renderRoadmaps();
+      renderBetChipStacks();
       for (const button of betButtons) {
         const type = button.dataset.betType;
         button.disabled = !isBetting;
@@ -878,7 +958,7 @@
     const third = index === 2 ? " third-card is-third-card" : "";
     return `<span class="card-shell${third}" data-card-key="${key}" data-card-position="${index + 1}" data-reveal-state="${revealed ? "FACE_UP" : "FACE_DOWN"}"><span class="card-inner${revealed ? " is-face-up" : " is-face-down"}">${playingCardBackHtml()}<span class="card-face card-front playing-card--front ${color}"><span class="playing-card__corner playing-card__corner--top"><strong>${card.rank}</strong></span><span class="playing-card__center">${symbol}</span><span class="playing-card__corner playing-card__corner--bottom"><strong>${card.rank}</strong></span></span></span></span>`;
   }
-  const api = { INITIAL_BALANCE, CHIP_VALUES, DEFAULT_CHIP, AREA_MIN_BET, AREA_MAX_BET, ROUND_MAX_BET, MIN_CUT_REMAINING, MAX_CUT_REMAINING, GAME_STATES, SHOE_STATUS, CUT_CARD_ENTER_MS, CUT_CARD_HOLD_MS, CUT_CARD_EXIT_MS, CUT_CARD_EVENT_MS, formatMoney, getBurnValue, createBurnState, createCutCardState, randomInteger, getShoePresentationState, getShoeEquipmentState, renderBurnPresentation, renderShoeStatus, playingCardBackHtml, flipCardHtml, buildDealQueue, getDealDuration, getDiscardSequence, getChipComputedStyleSnapshot, BaccaratGameController, mountGame };
+  const api = { INITIAL_BALANCE, CHIP_VALUES, DEFAULT_CHIP, AREA_MIN_BET, AREA_MAX_BET, ROUND_MAX_BET, BET_CHIP_RENDER_CAP, MIN_CUT_REMAINING, MAX_CUT_REMAINING, GAME_STATES, SHOE_STATUS, CUT_CARD_ENTER_MS, CUT_CARD_HOLD_MS, CUT_CARD_EXIT_MS, CUT_CARD_EVENT_MS, formatMoney, getBurnValue, createBurnState, createCutCardState, createBetChipPresentation, cloneBetChipPresentation, buildBetChipColumns, getChipDenominationClass, betChipHtml, randomInteger, getShoePresentationState, getShoeEquipmentState, renderBurnPresentation, renderShoeStatus, playingCardBackHtml, flipCardHtml, buildDealQueue, getDealDuration, getDiscardSequence, getChipComputedStyleSnapshot, BaccaratGameController, mountGame };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.BaccaratApp = api;
   if (typeof window !== "undefined" && window.document) window.addEventListener("DOMContentLoaded", () => mountGame(window.document));
