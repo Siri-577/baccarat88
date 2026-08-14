@@ -261,6 +261,9 @@ button { font: inherit; color: inherit; cursor: pointer; } button:disabled { cur
 .chip-movement-ghost .chip__inner { position: relative; z-index: 2; display: grid; width: 70%; height: 70%; place-items: center; border: 1px solid color-mix(in srgb, var(--chip-accent) 70%, transparent); border-radius: 50%; background: radial-gradient(circle at 38% 30%, #f8f2e7, #efe6d2 72%); box-shadow: inset 0 1px 2px #fff, inset 0 -1px 2px #9a896522; }
 .chip-movement-ghost .chip__value { position: relative; z-index: 3; color: var(--chip-text); font: 700 .72rem/1 Georgia, "Times New Roman", serif; letter-spacing: -.04em; text-shadow: 0 1px #fff8; white-space: nowrap; }
 .chip-movement-ghost.chip--1k .chip__value, .chip-movement-ghost.chip--5k .chip__value { font-size: .62rem; letter-spacing: -.07em; }
+.settlement-payout-group { position: fixed; z-index: 2; width: 112px; height: 62px; pointer-events: none; transform-origin: center; }
+.settlement-payout-group .settlement-payout-chip { position: absolute; z-index: 1; }
+.settlement-payout-label { position: absolute; z-index: 3; top: 34px; left: 5px; color: #f7e9c2; font: 700 .82rem/1 Georgia, "Times New Roman", serif; letter-spacing: .02em; white-space: nowrap; text-shadow: 0 2px 5px #000c; }
 
 /* V0.8.0 — presentation-only table chips. They share the V0.7.7 ceramic tokens, never betting interaction. */
 .bet-area {
@@ -351,4 +354,6 @@ button { font: inherit; color: inherit; cursor: pointer; } button:disabled { cur
   .pair-bet .bet-chip--10 .bet-chip__value, .pair-bet .bet-chip--50 .bet-chip__value { font-size: 7.5px; }
   .pair-bet .bet-chip--100 .bet-chip__value, .pair-bet .bet-chip--500 .bet-chip__value { font-size: 6.5px; }
   .pair-bet .bet-chip--1k .bet-chip__value, .pair-bet .bet-chip--5k .bet-chip__value { font-size: 5.5px; }
+  .settlement-payout-group { width: 92px; height: 52px; }
+  .settlement-payout-label { top: 29px; font-size: .68rem; }
 }

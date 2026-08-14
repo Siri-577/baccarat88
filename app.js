@@ -31,6 +31,10 @@
   const CHIP_PLACEMENT_DURATION_MS = 220;
   const CHIP_RETURN_DURATION_MS = 220;
   const CHIP_CLEAR_RETURN_DURATION_MS = 240;
+  const CHIP_LOSS_COLLECTION_DURATION_MS = 240;
+  const CHIP_WIN_PAYOUT_DURATION_MS = 280;
+  const CHIP_PUSH_RETURN_DURATION_MS = 240;
+  const MAX_PAYOUT_GHOST_CHIPS_PER_AREA = 4;
   const SHOE_STATUS = Object.freeze({ IN_PLAY: "IN_PLAY", CUT_REACHED: "CUT_REACHED", LAST_HAND_NEXT: "LAST_HAND_NEXT", LAST_HAND: "LAST_HAND", COMPLETE: "COMPLETE" });
   const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
@@ -168,6 +172,39 @@
     return `<span class="bet-chip bet-chip--${chipClass}${extraClass}" data-denomination="${denomination}"${stackAttribute} aria-hidden="true"><span class="bet-chip__spots"></span><span class="bet-chip__inner"><span class="bet-chip__value">${denomination}</span></span></span>`;
   }
 
+  /** Presentation adapter only: settlement outcomes remain owned by betting-engine.js. */
+  function classifyBetSettlement(settlementItem) {
+    if (!settlementItem || settlementItem.stake <= 0 || settlementItem.outcome === betting.OUTCOMES.NO_BET) return null;
+    if (settlementItem.outcome === betting.OUTCOMES.LOSE) return "LOSS";
+    if (settlementItem.outcome === betting.OUTCOMES.WIN) return "WIN";
+    if (settlementItem.outcome === betting.OUTCOMES.PUSH) return "PUSH";
+    return null;
+  }
+
+  function buildSettlementPresentationSnapshot(settlement, presentation) {
+    if (!settlement?.settlements) return [];
+    return Object.values(settlement.settlements).map((item) => {
+      const outcome = classifyBetSettlement(item);
+      if (!outcome) return null;
+      return {
+        area: item.betType,
+        outcome,
+        betAmount: item.stake,
+        totalReturn: item.returnAmount,
+        denominations: [...(presentation?.[item.betType] || [])],
+        visibleChipRects: []
+      };
+    }).filter(Boolean);
+  }
+
+  function choosePayoutDenominations(snapshot) {
+    const count = Math.min(MAX_PAYOUT_GHOST_CHIPS_PER_AREA, Math.max(2, Math.ceil(snapshot.totalReturn / 5000)));
+    const source = snapshot.denominations.slice(-count);
+    const tier = [...CHIP_VALUES].reverse().find((denomination) => denomination <= snapshot.totalReturn) || CHIP_VALUES[0];
+    while (source.length < count) source.push(tier);
+    return source.slice(0, MAX_PAYOUT_GHOST_CHIPS_PER_AREA);
+  }
+
   class BaccaratGameController {
     constructor({ initialBalance = INITIAL_BALANCE, random = Math.random, autoRevealInterval = AUTO_REVEAL_INTERVAL_MS, autoRevealStartDelay = AUTO_REVEAL_START_DELAY_MS, debugForcedCutThreshold } = {}) {
       this.random = random;
@@ -179,6 +216,7 @@
       this.cutCard = createCutCardState(this.random, debugForcedCutThreshold);
       this.cutEventRunId = 0;
       this.onCutCardReached = null;
+      this.onSettlementPresentation = null;
       this.burnState = createBurnState();
       this.performBurn();
       this.burnPresentationVisible = true;
@@ -531,6 +569,8 @@
           await wait(160);
           this.settlement = betting.settleRound(this.account, this.bettingRound, this.roundResult);
           this.recordCurrentRoundRoad();
+          try { await this.onSettlementPresentation?.(this.settlement); }
+          catch (error) { if (DEBUG_DEAL_ANIMATION) console.error("[SETTLEMENT PRESENTATION ERROR]", error); }
           this.completeCurrentRoundCutFlow();
           this.state = GAME_STATES.ROUND_END;
           this.message = this.cutCard.shoeEnding ? "SHOE COMPLETE · 本靴结束" : `${this.roundResult.winner}${this.roundResult.winner === "TIE" ? "" : " WIN"} · 发牌完成`;
@@ -805,6 +845,75 @@
       for (const ghost of activeChipMovements.values()) ghost.remove();
       activeChipMovements.clear();
     }
+    function getBalanceTargetRect() { return elements.balance?.getBoundingClientRect() || null; }
+    function getDiscardTargetRect() { return document.querySelector(".discard-tray")?.getBoundingClientRect() || null; }
+    function createSettlementPayoutGroup(snapshot, fromRect) {
+      const layer = elements.chipAnimationLayer;
+      if (!layer) return null;
+      const group = document.createElement("span");
+      group.className = "settlement-payout-group";
+      group.dataset.movement = "win";
+      group.setAttribute("aria-hidden", "true");
+      group.style.left = `${fromRect.left}px`;
+      group.style.top = `${fromRect.top}px`;
+      const denominations = choosePayoutDenominations(snapshot);
+      group.innerHTML = `${denominations.map((denomination, index) => {
+        const chipClass = getChipDenominationClass(denomination);
+        return `<span class="chip-movement-ghost settlement-payout-chip chip--${chipClass}" style="left:${index * 5}px;top:${index * 3}px;width:${fromRect.width}px;height:${fromRect.height}px"><span class="chip__spots"></span><span class="chip__inner"><span class="chip__value">${denomination}</span></span></span>`;
+      }).join("")}<strong class="settlement-payout-label">+${formatMoney(snapshot.totalReturn)}</strong>`;
+      layer.append(group);
+      return group;
+    }
+    function animateSettlementPayout(snapshot, fromRect, toRect) {
+      if (isReducedMotion() || !isViewportRect(fromRect) || !isViewportRect(toRect)) return Promise.resolve();
+      const group = createSettlementPayoutGroup(snapshot, fromRect);
+      if (!group) return Promise.resolve();
+      const movementId = ++nextChipMovementId;
+      const deltaX = toRect.left + toRect.width / 2 - (fromRect.left + fromRect.width / 2);
+      const deltaY = toRect.top + toRect.height / 2 - (fromRect.top + fromRect.height / 2);
+      activeChipMovements.set(movementId, group);
+      const finish = () => finishChipMovement(movementId, group);
+      try {
+        if (group.animate) return group.animate([
+          { transform: "translate(0, 0) scale(1)", opacity: 1 },
+          { transform: `translate(${deltaX}px, ${deltaY}px) scale(.92)`, opacity: 1 }
+        ], { duration: CHIP_WIN_PAYOUT_DURATION_MS, easing: "cubic-bezier(.2, .7, .3, 1)", fill: "forwards" }).finished.then(finish, finish);
+      } catch (error) { finish(); }
+      finish();
+      return Promise.resolve();
+    }
+    function getVisibleSettlementChipRects() {
+      const visible = Object.fromEntries(Object.values(betting.BET_TYPES).map((type) => [type, []]));
+      for (const [area, zone] of betChipZones) {
+        visible[area] = [...zone.querySelectorAll(".bet-chip")].map((chip) => ({
+          denomination: Number(chip.dataset.denomination), fromRect: chip.getBoundingClientRect()
+        })).filter((item) => isViewportRect(item.fromRect));
+      }
+      return visible;
+    }
+    async function runSettlementPresentationBatch(settlement) {
+      const snapshots = buildSettlementPresentationSnapshot(settlement, game.betChipPresentation);
+      const visibleByArea = getVisibleSettlementChipRects();
+      snapshots.forEach((snapshot) => { snapshot.visibleChipRects = visibleByArea[snapshot.area] || []; });
+      cancelPendingChipArrivals();
+      game.clearBetChipPresentation();
+      renderBetChipStacks();
+      if (isReducedMotion() || document.hidden) return;
+      const balanceTarget = getBalanceTargetRect();
+      const discardTarget = getDiscardTargetRect();
+      const tasks = snapshots.flatMap((snapshot) => {
+        if (snapshot.outcome === "LOSS") return snapshot.visibleChipRects.map((item) => new Promise((resolve) => {
+          animateChipMovement({ denomination: item.denomination, fromRect: item.fromRect, toRect: discardTarget, duration: CHIP_LOSS_COLLECTION_DURATION_MS, onFinish: resolve });
+        }));
+        if (snapshot.outcome === "PUSH") return snapshot.visibleChipRects.map((item) => new Promise((resolve) => {
+          animateChipMovement({ denomination: item.denomination, fromRect: item.fromRect, toRect: balanceTarget, duration: CHIP_PUSH_RETURN_DURATION_MS, onFinish: resolve });
+        }));
+        const fromRect = snapshot.visibleChipRects.at(-1)?.fromRect;
+        return fromRect ? [animateSettlementPayout(snapshot, fromRect, balanceTarget)] : [];
+      });
+      await Promise.allSettled(tasks);
+    }
+    function cleanupSettlementPresentation() { cancelPendingChipArrivals(); }
     const revealModeButtons = [...document.querySelectorAll("[data-reveal-mode]")];
     function initializeCardSlots(container, side) {
       container.innerHTML = [0, 1, 2].map((index) => `<span class="card-slot" data-side="${side}" data-slot-index="${index}"></span>`).join("");
@@ -932,6 +1041,7 @@
       elements.settlementDetails.innerHTML = Object.values(game.settlement.settlements).map((item) => `<li>${BET_LABELS[item.betType]}: ${item.outcome} / Return ${formatMoney(item.returnAmount)}</li>`).join("");
     }
     game.onStateChange = render;
+    game.onSettlementPresentation = runSettlementPresentationBatch;
     game.onRoadmapChange = renderRoadmaps;
     game.onCutCardReached = () => {
       const event = elements.cutCardEvent;
@@ -1053,7 +1163,7 @@
       await Promise.all(tasks);
       const tray = document.querySelector(".discard-tray"); if (tray && tray.animate) await tray.animate([{ transform: "scale(1)" }, { transform: "scale(1.02)" }, { transform: "scale(1)" }], { duration: 110, easing: "ease-out" }).finished;
     }
-    elements.deal.addEventListener("click", async () => { const wasRoundEnd = game.state === GAME_STATES.ROUND_END; const wasShoeEnding = game.cutCard.shoeEnding; await game.handlePrimaryAction(animatePresentationCard, flipPresentationCard, discardRoundCards); if (wasRoundEnd) { initializeCardSlots(elements.playerCards, "PLAYER"); initializeCardSlots(elements.bankerCards, "BANKER"); document.querySelectorAll(".flying-card,.discard-clone").forEach((element) => element.remove()); } render(); if (wasShoeEnding) await presentInitialBurn(); });
+    elements.deal.addEventListener("click", async () => { const wasRoundEnd = game.state === GAME_STATES.ROUND_END; const wasShoeEnding = game.cutCard.shoeEnding; if (wasRoundEnd) cleanupSettlementPresentation(); await game.handlePrimaryAction(animatePresentationCard, flipPresentationCard, discardRoundCards); if (wasRoundEnd) { initializeCardSlots(elements.playerCards, "PLAYER"); initializeCardSlots(elements.bankerCards, "BANKER"); document.querySelectorAll(".flying-card,.discard-clone").forEach((element) => element.remove()); } render(); if (wasShoeEnding) await presentInitialBurn(); });
     if (roadmapToggle) roadmapToggle.addEventListener("click", () => {
       const expanded = roadmap.classList.toggle("expanded");
       roadmapToggle.textContent = expanded ? "收起" : "展开";
@@ -1080,7 +1190,7 @@
     const third = index === 2 ? " third-card is-third-card" : "";
     return `<span class="card-shell${third}" data-card-key="${key}" data-card-position="${index + 1}" data-reveal-state="${revealed ? "FACE_UP" : "FACE_DOWN"}"><span class="card-inner${revealed ? " is-face-up" : " is-face-down"}">${playingCardBackHtml()}<span class="card-face card-front playing-card--front ${color}"><span class="playing-card__corner playing-card__corner--top"><strong>${card.rank}</strong></span><span class="playing-card__center">${symbol}</span><span class="playing-card__corner playing-card__corner--bottom"><strong>${card.rank}</strong></span></span></span></span>`;
   }
-  const api = { INITIAL_BALANCE, CHIP_VALUES, DEFAULT_CHIP, AREA_MIN_BET, AREA_MAX_BET, ROUND_MAX_BET, BET_CHIP_RENDER_CAP, MIN_CUT_REMAINING, MAX_CUT_REMAINING, GAME_STATES, SHOE_STATUS, CUT_CARD_ENTER_MS, CUT_CARD_HOLD_MS, CUT_CARD_EXIT_MS, CUT_CARD_EVENT_MS, CHIP_PLACEMENT_DURATION_MS, CHIP_RETURN_DURATION_MS, CHIP_CLEAR_RETURN_DURATION_MS, formatMoney, getBurnValue, createBurnState, createCutCardState, createBetChipPresentation, cloneBetChipPresentation, buildBetChipColumns, getChipDenominationClass, betChipHtml, randomInteger, getShoePresentationState, getShoeEquipmentState, renderBurnPresentation, renderShoeStatus, playingCardBackHtml, flipCardHtml, buildDealQueue, getDealDuration, getDiscardSequence, getChipComputedStyleSnapshot, BaccaratGameController, mountGame };
+  const api = { INITIAL_BALANCE, CHIP_VALUES, DEFAULT_CHIP, AREA_MIN_BET, AREA_MAX_BET, ROUND_MAX_BET, BET_CHIP_RENDER_CAP, MIN_CUT_REMAINING, MAX_CUT_REMAINING, GAME_STATES, SHOE_STATUS, CUT_CARD_ENTER_MS, CUT_CARD_HOLD_MS, CUT_CARD_EXIT_MS, CUT_CARD_EVENT_MS, CHIP_PLACEMENT_DURATION_MS, CHIP_RETURN_DURATION_MS, CHIP_CLEAR_RETURN_DURATION_MS, CHIP_LOSS_COLLECTION_DURATION_MS, CHIP_WIN_PAYOUT_DURATION_MS, CHIP_PUSH_RETURN_DURATION_MS, MAX_PAYOUT_GHOST_CHIPS_PER_AREA, formatMoney, getBurnValue, createBurnState, createCutCardState, createBetChipPresentation, cloneBetChipPresentation, buildBetChipColumns, getChipDenominationClass, betChipHtml, classifyBetSettlement, buildSettlementPresentationSnapshot, choosePayoutDenominations, randomInteger, getShoePresentationState, getShoeEquipmentState, renderBurnPresentation, renderShoeStatus, playingCardBackHtml, flipCardHtml, buildDealQueue, getDealDuration, getDiscardSequence, getChipComputedStyleSnapshot, BaccaratGameController, mountGame };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.BaccaratApp = api;
   if (typeof window !== "undefined" && window.document) window.addEventListener("DOMContentLoaded", () => mountGame(window.document));
