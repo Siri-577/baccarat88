@@ -3,7 +3,7 @@
   "version": "0.7.5",
   "private": true,
   "scripts": {
-    "test": "node baccarat-test.js && node betting-test.js && node simulator-test.js && node roadmap-test.js && node derived-road-test.js && node roadmap-layout-test.js && node repeat-bet-test.js && node burn-card-test.js && node cut-card-test.js && node shoe-status-test.js && node mobile-table-layout-test.js && node shoe-visual-test.js && node app-test.js",
+    "test": "node baccarat-test.js && node betting-test.js && node simulator-test.js && node roadmap-test.js && node derived-road-test.js && node roadmap-layout-test.js && node repeat-bet-test.js && node burn-card-test.js && node cut-card-test.js && node shoe-status-test.js && node mobile-table-layout-test.js && node shoe-visual-test.js && node card-deck-redesign-test.js && node casino-chip-ui-test.js && node app-test.js",
     "test:baccarat": "node baccarat-test.js",
     "test:betting": "node betting-test.js",
     "test:simulator": "node simulator-test.js",
